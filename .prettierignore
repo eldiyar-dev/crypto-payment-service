@@ -1,0 +1,8 @@
+build/
+dist/
+/node_modules
+.vscode
+
+# Ignore files:
+/public
+/src/assets
