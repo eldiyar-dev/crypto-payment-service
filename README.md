@@ -1,75 +1,3 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
-
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
-
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
-
-## Description
-
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
-
-## Project setup
-
-```bash
-$ npm install
-```
-
-## Compile and run the project
-
-```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
-```
-
-## Run tests
-
-```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
-```
-
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
-
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
 # 🌈 Структура проекта
 
 _Реализовано с помощью **Clean Architecture** и **Hexagonal Pattern**_
@@ -259,3 +187,119 @@ _Реализовано с помощью **Clean Architecture** и **Hexagonal
     - Примеры: преобразование строковых параметров в числа, проверка DTO
 
 ---
+
+```mermaid
+  graph TB
+    %% External Actors
+    USER[👤 User/Client]
+    BLOCKCHAIN[🔗 Blockchain APIs]
+    DATABASE[🗄️ Database]
+    REDIS[📊 Redis]
+
+    %% Presentation Layer (Adapters)
+    subgraph PRESENTATION["🎯 Presentation Layer"]
+        CONTROLLERS[Controllers<br/>HTTP Endpoints]
+        MIDDLEWARES[Middlewares<br/>Request Processing]
+        PIPES[Pipes<br/>Data Validation]
+        PRESENTATION_DTO[DTO<br/>API Models]
+    end
+
+    %% Application Layer (Use Cases)
+    subgraph APPLICATION["⚙️ Application Layer"]
+        APP_INTERFACES[Interfaces<br/>Contracts]
+        AUTO_WITHDRAW[Auto-Withdraw<br/>Use Cases]
+        MANAGE_WALLETS[Manage-Wallets<br/>Use Cases]
+        MONITOR_BLOCKCHAIN[Monitor-Blockchain<br/>Use Cases]
+    end
+
+    %% Domain Layer (Business Logic)
+    subgraph DOMAIN["💎 Domain Layer"]
+        ENTITIES[Entities<br/>Business Objects]
+        REPOSITORIES[Repository Interfaces<br/>Data Contracts]
+    end
+
+    %% Common Layer (Shared)
+    subgraph COMMON["🔧 Common Layer"]
+        CONSTANTS[Constants]
+        DECORATORS[Decorators]
+        COMMON_DTO[DTO]
+        ENUMS[Enums]
+        GUARDS[Guards]
+        INTERFACES[Interfaces]
+        UTILS[Utils]
+    end
+
+    %% Infrastructure Layer (Adapters)
+    subgraph INFRASTRUCTURE["🏗️ Infrastructure Layer"]
+        BLOCKCHAIN_IMPL[Blockchain Services<br/>External API Clients]
+        CONFIG[Configuration<br/>Environment Setup]
+        DATABASE_IMPL[Database Implementation<br/>ORM Models]
+        MODULES[NestJS Modules<br/>DI Container]
+        REDIS_IMPL[Redis Implementation<br/>Caching & Queues]
+    end
+
+    %% External connections
+    USER --> CONTROLLERS
+    CONTROLLERS --> USER
+
+    %% Presentation to Application
+    CONTROLLERS --> AUTO_WITHDRAW
+    CONTROLLERS --> MANAGE_WALLETS
+    CONTROLLERS --> MONITOR_BLOCKCHAIN
+
+    %% Presentation internal
+    CONTROLLERS --> MIDDLEWARES
+    CONTROLLERS --> PIPES
+    CONTROLLERS --> PRESENTATION_DTO
+
+    %% Application to Domain
+    AUTO_WITHDRAW --> ENTITIES
+    MANAGE_WALLETS --> ENTITIES
+    MONITOR_BLOCKCHAIN --> ENTITIES
+
+    AUTO_WITHDRAW --> REPOSITORIES
+    MANAGE_WALLETS --> REPOSITORIES
+    MONITOR_BLOCKCHAIN --> REPOSITORIES
+
+    %% Application internal
+    AUTO_WITHDRAW --> APP_INTERFACES
+    MANAGE_WALLETS --> APP_INTERFACES
+    MONITOR_BLOCKCHAIN --> APP_INTERFACES
+
+    %% Infrastructure implements Domain contracts
+    DATABASE_IMPL --> REPOSITORIES
+    BLOCKCHAIN_IMPL --> REPOSITORIES
+    REDIS_IMPL --> REPOSITORIES
+
+    %% Infrastructure to External
+    BLOCKCHAIN_IMPL --> BLOCKCHAIN
+    DATABASE_IMPL --> DATABASE
+    REDIS_IMPL --> REDIS
+
+    %% Common layer dependencies (used by all layers)
+    PRESENTATION --> COMMON
+    APPLICATION --> COMMON
+    DOMAIN --> COMMON
+    INFRASTRUCTURE --> COMMON
+
+    %% Infrastructure modules coordinate everything
+    MODULES --> INFRASTRUCTURE
+    MODULES --> APPLICATION
+    MODULES --> PRESENTATION
+    CONFIG --> MODULES
+
+    %% Styling
+    classDef domainStyle fill:#e1f5fe,stroke:#01579b,stroke-width:3px
+    classDef applicationStyle fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef infrastructureStyle fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    classDef presentationStyle fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px
+    classDef commonStyle fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+    classDef externalStyle fill:#ffebee,stroke:#c62828,stroke-width:2px
+
+    class DOMAIN domainStyle
+    class APPLICATION applicationStyle
+    class INFRASTRUCTURE infrastructureStyle
+    class PRESENTATION presentationStyle
+    class COMMON commonStyle
+    class USER,BLOCKCHAIN,DATABASE,REDIS externalStyle
+```
