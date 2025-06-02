@@ -70,29 +70,192 @@ $ mau deploy
 
 With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
 
-## Resources
+# 🌈 Структура проекта
 
-Check out a few resources that may come in handy when working with NestJS:
+_Реализовано с помощью **Clean Architecture** и **Hexagonal Pattern**_
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+---
 
-## Support
+## 🗂 1. `application/`
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+> **Назначение:**  
+> _Слой бизнес-логики (Application Layer). Здесь оформляются сценарии использования (use cases), которые координируют работу между доменом и инфраструктурой._
 
-## Stay in touch
+### 📁 Содержимое:
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+- #### `interfaces/`
 
-## License
+  - **Что это:** Интерфейсы для сценариев использования, сервисов, портов и т. д.
+  - **Пример:**
+    - `IWithdrawService`
+    - `IWalletManager`
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+- #### `usecases/`
+  - **Что это:** Реализация бизнес-сценариев (use cases).
+  - 📂 **Подпапки:**
+    1. **`auto-withdraw/`**
+       - _Логика автоматического вывода средств:_
+         - Автоматизация переводов
+         - Проверка лимитов и т. д.
+    2. **`manage-wallets/`**
+       - _Сценарии управления кошельками:_
+         - Создание кошелька
+         - Удаление кошелька
+         - Обновление кошелька
+         - Получение информации о кошельках
+    3. **`monitor-blockchain/`**
+       - _Сценарии мониторинга блокчейна:_
+         - Отслеживание входящих транзакций
+         - Мониторинг подтверждений
+         - И другие задачи, связанные с реакцией на события блокчейна
+
+---
+
+## 🛠 2. `common/`
+
+> **Назначение:**  
+> _Общие компоненты, используемые во всём проекте. Это слой переиспользуемых сущностей, утилит и вспомогательных конструкций._
+
+### 📁 Содержимое:
+
+- #### `constants/`
+
+  - **Константы:** Magic numbers, строки ошибок, ключи конфигурации и т. д.
+
+- #### `decorators/`
+
+  - **Кастомные декораторы:**
+    - Для валидации
+    - Для авторизации
+    - Для логирования
+
+- #### `dto/`
+
+  - **Data Transfer Objects (DTO):** Структуры, которые описывают, как данные передаются между слоями (например, запросы и ответы API).
+
+- #### `enums/`
+
+  - **Перечисления:** Статусы, типы, роли и другие перечисления, используемые по всему проекту.
+
+- #### `guards/`
+
+  - **Guard’ы для NestJS:**
+    - Проверка авторизации
+    - Проверка прав доступа
+
+- #### `interfaces/`
+
+  - **Общие интерфейсы:**
+    - Не привязаны к конкретному слою.
+    - Например: `ICacheService`, `ILogger` и т. д.
+
+- #### `utils/`
+  - **Утилитарные функции и хелперы:**
+    - Форматирование данных
+    - Преобразование структур
+    - Логгирование
+    - Прочие мелкие вспомогательные методы
+
+---
+
+## 🏛 3. `domain/`
+
+> **Назначение:**  
+> _Доменная логика (Domain Layer). Здесь описываются основные бизнес‑сущности и их поведение, а также абстракции для работы с хранилищами данных._
+
+### 📁 Содержимое:
+
+- #### `entities/`
+
+  - **Доменные сущности:**
+    - Классы, описывающие бизнес‑логику и свойства объектов.
+    - Примеры:
+      - `User`
+      - `Wallet`
+      - `Transaction`
+
+- #### `repositories/`
+  - **Абстракции (интерфейсы) для репозиториев:**
+    - Определяют методы доступа к даданным.
+    - Примеры:
+      - `IUserRepository`
+      - `IWalletRepository`
+
+---
+
+## 🌐 4. `infrastructure/`
+
+> **Назначение:**  
+> _Инфраструктурный слой (Infrastructure Layer). Здесь реализуются детали взаимодействия с внешними сервисами, базами данных, блокчейнами и другими внешними компонентами._
+
+### 📁 Содержимое:
+
+- #### `blockchain/`
+
+  - **Логика работы с блокчейнами:**
+    - Сервисы мониторинга (слушатели событий)
+    - Взаимодействие с API Tron, Ethereum и прочих сетей
+
+- #### `config/`
+
+  - **Конфигурационные файлы и сервисы:**
+    - Загрузка и валидация переменных окружения
+    - Настройка модулей
+    - Файлы `.env`, `.json` и прочие конфиги
+
+- #### `database/`
+
+  - **Реализация доступа к БД:**
+    - ORM‑модели (например, TypeORM/Sequelize)
+    - Миграции
+    - Сервисы работы с базой данных (CRUD‑операции)
+
+- #### `modules/`
+
+  - **Инфраструктурные модули NestJS:**
+    - Интеграция сторонних библиотек
+    - Регистрация провайдеров
+    - Глобальные и локальные модули, относящиеся к внешним сервисам
+
+- #### `redis/`
+  - **Логика работы с Redis:**
+    - Кэширование
+    - Pub/Sub
+    - Очереди задач
+
+---
+
+## 🎨 5. `presentation/`
+
+> **Назначение:**  
+> _Слой представления (Presentation Layer). Здесь происходит взаимодействие с внешним миром_—_обработка HTTP‑запросов, валидация, сериализация. Именно здесь «включаются» сценарии использования (use cases) из слоя `application/`._
+
+### 📁 Содержимое:
+
+- #### `controllers/`
+
+  - **Контроллеры NestJS:**
+    - Обработчики HTTP‑запросов
+    - Определяют REST‑эндпоинты API
+
+- #### `dto/`
+
+  - **DTO, специфичные для слоя представления:**
+    - Структуры запросов/ответов, передаваемые клиенту/серверу
+    - Валидируемые и аннотированные классы для входящих данных
+
+- #### `middlewares/`
+
+  - **Middleware NestJS:**
+    - Промежуточная обработка запросов
+    - Примеры:
+      - Логирование
+      - CORS
+      - Rate limiting
+
+- #### `pipes/`
+  - **Pipes NestJS:**
+    - Валидация и трансформация входящих данных
+    - Примеры: преобразование строковых параметров в числа, проверка DTO
+
+---
