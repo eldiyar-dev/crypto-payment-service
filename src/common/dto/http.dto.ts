@@ -5,4 +5,7 @@ export class HttpMessageDto {
     oneOf: [{ type: 'array', items: { type: 'string' } }, { type: 'string' }],
   })
   message: string | string[]
+
+  @ApiProperty({ type: Boolean, example: true })
+  success: boolean
 }

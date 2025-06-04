@@ -1,3 +1,4 @@
+import { HttpMessageDto } from '@/common/dto/http.dto'
 import { Wallet } from '@/domain/entities/wallet.entity'
 import { ApiProperty, PickType } from '@nestjs/swagger'
 import { Type } from 'class-transformer'
@@ -15,13 +16,7 @@ export class CreateWalletDto {
   wallets: Pick<Wallet, 'currency' | 'address' | 'privateKey'>[]
 }
 
-export class CreateWalletsResponseDto {
-  @ApiProperty({
-    description: 'The message of the response',
-    example: 'Wallets saved successfully',
-  })
-  message: string
-
+export class CreateWalletsResponseDto extends HttpMessageDto {
   @ApiProperty({
     description: 'The data of the response',
     example: {

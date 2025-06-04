@@ -43,12 +43,13 @@ export class WalletController {
 
       if (invalidWallets.length) {
         return {
+          success: false,
           message: 'Invalid wallets',
           data: { invalidWallets },
         }
       }
 
-      return { message: 'Wallets saved successfully' }
+      return { success: true, message: 'Wallets saved successfully' }
     } catch (error) {
       this.logger.error('Error creating wallets', error)
       throw new HttpException('Internal server error', HttpStatus.INTERNAL_SERVER_ERROR)
