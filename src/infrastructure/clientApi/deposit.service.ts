@@ -14,9 +14,12 @@ type TDepositData = {
 export class DepositService {
   constructor(private readonly configService: ConfigService<TConfiguration>) {}
 
+  private get baseUrl() {
+    return this.configService.get('client_api_url')
+  }
+
   async notifyNewDeposit({ currency, address, amount }: TDepositData): Promise<void> {
-    const baseUrl = this.configService.get('client_api_url')
-    await axios.post(`${baseUrl}/api/new_deposit`, {
+    await axios.post(`${this.baseUrl}/api/new_deposit`, {
       currency,
       address,
       amount,
