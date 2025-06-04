@@ -55,6 +55,8 @@ export class BtcMonitorService {
     setInterval(() => {
       void this.pollAddresses(this.addresses)
     }, this.pollIntervalMs)
+    // Run immediately
+    void this.pollAddresses(this.addresses)
   }
 
   private async pollAddresses(addressees: string[]) {

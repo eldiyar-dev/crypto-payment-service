@@ -46,6 +46,8 @@ export class TronMonitorService {
       setInterval(() => {
         void this.pollDeposits()
       }, this.pollInterval)
+      // Run immediately
+      void this.pollDeposits()
     } catch (error: unknown) {
       this.logger.error('Error starting Tron monitor', error)
     }
