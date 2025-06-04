@@ -29,6 +29,8 @@ export default () =>
     blockcypher_api_key: process.env.BLOCKCYPHER_API_KEY,
     client_api_url: process.env.CLIENT_API_URL,
     private_key_secret: process.env.PRIVATE_KEY_SECRET,
+    ip_whitelist: (process.env.IP_WHITELIST ?? '')?.split(','),
+    api_key_secret: process.env.API_KEY_SECRET,
   }
 
 export type TConfiguration = {
@@ -46,4 +48,6 @@ export type TConfiguration = {
   blockcypher_api_key: string
   client_api_url: string
   private_key_secret: string
+  ip_whitelist: string[]
+  api_key_secret: string
 }
