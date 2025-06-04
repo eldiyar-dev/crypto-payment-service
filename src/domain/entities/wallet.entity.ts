@@ -1,5 +1,4 @@
-import { Chain } from '@/common/enums/chain.enum'
-import { Currency } from '@/common/enums/currency.enum'
+import { Chain, Currency } from '@/common/enums'
 import { ApiProperty } from '@nestjs/swagger'
 import { IsEnum, IsPositive, IsString } from 'class-validator'
 import { Column, CreateDateColumn, DeleteDateColumn, Entity, PrimaryGeneratedColumn, Unique, UpdateDateColumn } from 'typeorm'

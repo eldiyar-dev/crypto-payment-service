@@ -1,5 +1,4 @@
-import { Chain } from '@/common/enums/chain.enum'
-import { Currency } from '@/common/enums/currency.enum'
+import { Chain, Currency } from '@/common/enums'
 import { Wallet } from '@/domain/entities/wallet.entity'
 import { WalletRepository } from '@/domain/repositories/walletRepository'
 import { BtcMonitorService } from '@/infrastructure/blockchain/btcMonitor.service'

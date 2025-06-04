@@ -1,4 +1,4 @@
-import { Currency } from '@/common/enums/currency.enum'
+import { Currency } from '@/common/enums'
 import type { TConfiguration } from '@/infrastructure/config/configuration'
 import { Injectable } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'

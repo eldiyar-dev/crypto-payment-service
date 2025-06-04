@@ -1,4 +1,4 @@
-import { Chain } from '../enums/chain.enum'
+import { Chain } from '@/common/enums'
 
 /**
  * Detects the blockchain network type based on a cryptocurrency address.
