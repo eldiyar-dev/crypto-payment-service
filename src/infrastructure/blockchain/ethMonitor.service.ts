@@ -1,3 +1,4 @@
+import { withRetry } from '@/common/utils/retry.util'
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { ethers } from 'ethers'
@@ -19,6 +20,11 @@ export class EthMonitorService {
     '0xF0bAfD58E23726785A1681e1DEa0da15cB038C61'.toLowerCase(),
     '0xfB2C579c1D5f82C7b0f2a3479e5F9bC26bd22b62'.toLowerCase(),
     '0x859C9980931fa0A63765fD8EF2e29918Af5b038C'.toLowerCase(),
+    '0x28c6c06298d514db089934071355e5743bf21d60'.toLowerCase(), // Binance
+    '0x3f5ce5fbfe3e9af3971dd833d26ba9b5c936f0be'.toLowerCase(), // Binance
+    '0xdac17f958d2ee523a2206206994597c13d831ec7'.toLowerCase(), // USDT
+    '0x2faf487a4414fe77e2327f0bf4ae2a264a776ad2'.toLowerCase(), // FTX
+    '0x876eabf441b2ee5b5b0554fd502a8e0600950cfa'.toLowerCase(), // Gemini
   ]
 
   private provider: ethers.WebSocketProvider
@@ -43,25 +49,33 @@ export class EthMonitorService {
   }
 
   private async checkBlockForDeposits(blockNumber: number) {
-    const block = await this.provider.getBlock(blockNumber)
+    const block = await this.getBlockWithRetry(blockNumber)
     if (!block) return
 
     for (const txHash of block.transactions) {
       try {
-        const tx = await this.provider.getTransaction(txHash)
+        const tx = await this.getTransactionWithRetry(txHash)
         if (!tx?.to) continue
 
         const to = tx.to.toLowerCase()
         if (!this.addresses.includes(to)) continue
 
         const amountEth = Number(ethers.formatEther(tx.value))
+        if (!amountEth) continue
 
-        this.logger.log(`Deposit detected: to ${to}, amount ${amountEth} ETH`)
-
+        this.logger.log(`Deposit detected: ${amountEth} ETH to ${to}`)
         this.depositCallback({ address: to, amount: amountEth })
       } catch (err) {
         this.logger.error('Error processing transaction', (err as Error).message)
       }
     }
+  }
+
+  private async getTransactionWithRetry(txHash: string): Promise<ethers.TransactionResponse | null> {
+    return withRetry(() => this.provider.getTransaction(txHash))
+  }
+
+  private async getBlockWithRetry(blockNumber: number): Promise<ethers.Block | null> {
+    return withRetry(() => this.provider.getBlock(blockNumber))
   }
 }

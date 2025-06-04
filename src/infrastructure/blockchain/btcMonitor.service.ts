@@ -35,9 +35,14 @@ export class BtcMonitorService {
     '3JZq4atUahhuA9rLhXLMhhTo133J9rF97j', // Bitfinex
     '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa', // Satosh
     '1DEP8i3QJCsomS4BSMY2RpU1upv62aGvhD',
+    '3M219KR5vEneNb47ewrPfWyb5jQ2DjxRP6', // Binance
+    '34xp4vRoCGJym3xR7yCVPFHoCNxv4Twseo', // Binance
+    '385cR5DM96n1HvBDMzLHPYcw89fZAXULJP', // Binance
+    '3Kzh9qAqVWQhEsfQz7zEQL1EuSx5tyNLNS', // Binance
+    '3JvL6Ymt8MVWiCNHC7oWU6nLeHNJKLZGLN', // Binance
   ]
 
-  private readonly pollIntervalMs = 40_000
+  private readonly pollIntervalMs = 60_000
 
   // Храним последние балансы адресов
   private lastBalances: Record<string, number> = {}
@@ -59,29 +64,31 @@ export class BtcMonitorService {
 
       for (const address of addresses) {
         if ('error' in address) {
-          this.logger.error(`Error polling addresses:`, address.error)
+          this.logger.error(`Error polling address:`, address.error)
           continue
         }
 
         this.checkDeposit(address.address, address.final_balance)
       }
     } catch (err) {
-      this.logger.error(`Error polling addresses:`, err)
+      this.logger.error(`Error polling addresses:`, (err as Error).message)
     }
   }
 
-  private checkDeposit(address: string, amount: number) {
+  private checkDeposit(address: string, finalBalance: number) {
     const lastBalance = this.lastBalances[address]
     if (!lastBalance) {
-      this.lastBalances[address] = amount
+      this.lastBalances[address] = finalBalance
       return
     }
 
-    if (amount > lastBalance) {
+    if (finalBalance > lastBalance) {
+      const amount = finalBalance - lastBalance
+      this.logger.log(`Deposit detected: to ${address}, amount ${amount} BTC`)
       this.depositCallback({ address, amount })
-    } else if (amount < lastBalance) {
-      this.logger.log(`Balance decreased for ${address}: ${lastBalance} → ${amount}`)
-      this.lastBalances[address] = amount
+    } else if (finalBalance < lastBalance) {
+      this.logger.log(`Balance decreased for ${address}: ${lastBalance} → ${finalBalance}`)
+      this.lastBalances[address] = finalBalance
     }
   }
 }
