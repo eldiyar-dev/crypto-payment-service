@@ -1,0 +1,50 @@
+version: '3'
+services:
+    db:
+        image: postgres
+        restart: always
+        environment:
+            POSTGRES_USER: postgres
+            POSTGRES_PASSWORD: root
+        volumes:
+            - database-data:/var/lib/postgresql/data/
+        ports:
+            - 5432:5432
+        networks:
+            - local
+
+    redis:
+        image: 'redis:alpine'
+        environment:
+            # ALLOW_EMPTY_PASSWORD is recommended only for development.
+            - ALLOW_EMPTY_PASSWORD=yes
+            - REDIS_DISABLE_COMMANDS=FLUSHDB,FLUSHALL
+        ports:
+            - '6379:6379'
+        volumes:
+            - 'redis_data:/bitnami/redis/data'
+        networks:
+            - local
+
+    # app:
+    #     build:
+    #         context: .
+    #         dockerfile: Dockerfile
+    #     volumes:
+    #         - .:/home/node/app
+    #         - /home/node/app/node_modules
+    #     ports:
+    #         - 3000:3000
+    #     depends_on:
+    #         - db
+    #         - redis
+    #     networks:
+    #         - local
+
+volumes:
+    redis_data:
+        driver: local
+    database-data:
+
+networks:
+    local:
