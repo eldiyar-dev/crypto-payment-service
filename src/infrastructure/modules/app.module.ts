@@ -1,10 +1,8 @@
 import configuration from '@/infrastructure/config/configuration'
 import { Module } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
-import { EthMonitorModule } from './ethMonitor.module'
+import { BtcMonitorModule } from './btcMonitor.module'
 import { HealthModule } from './health.module'
-import { TronMonitorModule } from './tronMonitor.module'
-
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -12,8 +10,9 @@ import { TronMonitorModule } from './tronMonitor.module'
       isGlobal: true,
       cache: true,
     }),
-    TronMonitorModule,
-    EthMonitorModule,
+    // TronMonitorModule,
+    // EthMonitorModule,
+    BtcMonitorModule,
     HealthModule,
   ],
   controllers: [],

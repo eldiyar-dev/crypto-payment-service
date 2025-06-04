@@ -35,22 +35,33 @@ export class EthMonitorService {
   private async listen() {
     await this.provider.on('block', async (blockNumber: number) => {
       try {
-        const block = await this.provider.getBlock(blockNumber)
-        if (!block) return
-
-        for (const tx of block.transactions) {
-          if (tx && this.addresses.includes(tx.toLowerCase())) {
-            this.depositCallback({
-              address: tx,
-              amount: Number(ethers.formatEther(tx)),
-            })
-
-            this.logger.log(`Deposit detected: ${ethers.formatEther(tx)} ETH to ${tx}`)
-          }
-        }
+        await this.checkBlockForDeposits(blockNumber)
       } catch (err) {
         this.logger.error('Error processing block', err)
       }
     })
+  }
+
+  private async checkBlockForDeposits(blockNumber: number) {
+    const block = await this.provider.getBlock(blockNumber)
+    if (!block) return
+
+    for (const txHash of block.transactions) {
+      try {
+        const tx = await this.provider.getTransaction(txHash)
+        if (!tx?.to) continue
+
+        const to = tx.to.toLowerCase()
+        if (!this.addresses.includes(to)) continue
+
+        const amountEth = Number(ethers.formatEther(tx.value))
+
+        this.logger.log(`Deposit detected: to ${to}, amount ${amountEth} ETH`)
+
+        this.depositCallback({ address: to, amount: amountEth })
+      } catch (err) {
+        this.logger.error('Error processing transaction', (err as Error).message)
+      }
+    }
   }
 }

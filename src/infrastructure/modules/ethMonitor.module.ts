@@ -1,6 +1,6 @@
+import { EthMonitorUseCase } from '@/application/usecases/monitor-blockchain/ethMonitor.usecase'
 import { Module } from '@nestjs/common'
 import { EthMonitorService } from '../blockchain/ethMonitor.service'
-import { EthMonitorUseCase } from '@/aplication/usecases/monitor-blockchain/eth-monitor.usecase'
 
 @Module({
   imports: [],

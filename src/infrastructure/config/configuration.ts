@@ -20,6 +20,7 @@ export default () =>
     throttler: [{ ttl: 60000, limit: 10 }],
     tron_pro_api_key: process.env.TRON_PRO_API_KEY,
     infura_api_key: process.env.INFURA_API_KEY,
+    blockcypher_api_key: process.env.BLOCKCYPHER_API_KEY,
   }
 
 export type TConfiguration = {
@@ -33,4 +34,5 @@ export type TConfiguration = {
   throttler: ThrottlerModuleOptions
   tron_pro_api_key: string
   infura_api_key: string
+  blockcypher_api_key: string
 }

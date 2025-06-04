@@ -1,4 +1,4 @@
-import { TronMonitorUseCase } from '@/aplication/usecases/monitor-blockchain/tron-monitor.usecase'
+import { TronMonitorUseCase } from '@/application/usecases/monitor-blockchain/tronMonitor.usecase'
 import { Module } from '@nestjs/common'
 import { TronMonitorService } from '../blockchain/tronMonitor.service'
 
