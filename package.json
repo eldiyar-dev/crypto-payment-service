@@ -34,9 +34,12 @@
     "ethers": "^6.14.3",
     "express-basic-auth": "^1.2.1",
     "helmet": "^8.1.0",
+    "ioredis": "^5.6.1",
+    "pg": "^8.16.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
-    "tronweb": "^6.0.3"
+    "tronweb": "^6.0.3",
+    "typeorm": "^0.3.24"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",

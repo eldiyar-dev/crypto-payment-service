@@ -1,5 +1,6 @@
 import type { ThrottlerModuleOptions } from '@nestjs/throttler'
 import type { TypeOrmModuleOptions } from '@nestjs/typeorm/dist'
+import type { RedisOptions } from 'ioredis'
 
 export default () =>
   <TConfiguration>{
@@ -17,6 +18,10 @@ export default () =>
       synchronize: true,
       logging: true,
     },
+    redis: {
+      port: +process.env.REDIS_PORT!,
+      host: process.env.REDIS_HOST,
+    },
     throttler: [{ ttl: 60000, limit: 10 }],
     tron_pro_api_key: process.env.TRON_PRO_API_KEY,
     infura_api_key: process.env.INFURA_API_KEY,
@@ -32,6 +37,7 @@ export type TConfiguration = {
   backHostUrl: string
   swaggerPass: string
   postgres: TypeOrmModuleOptions
+  redis: { port: RedisOptions['port']; host: RedisOptions['host'] }
   throttler: ThrottlerModuleOptions
   tron_pro_api_key: string
   infura_api_key: string
