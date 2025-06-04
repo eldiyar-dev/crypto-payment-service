@@ -23,40 +23,53 @@ type TResponseError = { error: string }
 export class BtcMonitorService {
   private readonly logger = new Logger(BtcMonitorService.name)
 
-  constructor(private readonly configService: ConfigService<TConfiguration>) {}
+  constructor(private readonly configService: ConfigService<TConfiguration>) {
+    ;[
+      'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh', // Binance
+      '3JZq4atUahhuA9rLhXLMhhTo133J9rF97j', // Bitfinex
+      '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa', // Satosh
+      '1DEP8i3QJCsomS4BSMY2RpU1upv62aGvhD',
+      '3M219KR5vEneNb47ewrPfWyb5jQ2DjxRP6', // Binance
+      '34xp4vRoCGJym3xR7yCVPFHoCNxv4Twseo', // Binance
+      '385cR5DM96n1HvBDMzLHPYcw89fZAXULJP', // Binance
+      '3Kzh9qAqVWQhEsfQz7zEQL1EuSx5tyNLNS', // Binance
+      '3JvL6Ymt8MVWiCNHC7oWU6nLeHNJKLZGLN', // Binance
+    ].forEach((address) => this.addAddress(address))
+  }
 
   private readonly baseUrl = 'https://api.blockcypher.com'
 
   private depositCallback: DepositCallback
 
-  // Список отслеживаемых адресов
-  private readonly addresses = [
-    'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh', // Binance
-    '3JZq4atUahhuA9rLhXLMhhTo133J9rF97j', // Bitfinex
-    '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa', // Satosh
-    '1DEP8i3QJCsomS4BSMY2RpU1upv62aGvhD',
-    '3M219KR5vEneNb47ewrPfWyb5jQ2DjxRP6', // Binance
-    '34xp4vRoCGJym3xR7yCVPFHoCNxv4Twseo', // Binance
-    '385cR5DM96n1HvBDMzLHPYcw89fZAXULJP', // Binance
-    '3Kzh9qAqVWQhEsfQz7zEQL1EuSx5tyNLNS', // Binance
-    '3JvL6Ymt8MVWiCNHC7oWU6nLeHNJKLZGLN', // Binance
-  ]
+  private readonly addresses = new Set<string>()
 
   private readonly pollIntervalMs = 60_000
 
-  // Храним последние балансы адресов
   private lastBalances: Record<string, number> = {}
 
   onDeposit(callback: DepositCallback) {
     this.depositCallback = callback
   }
 
+  addAddress(address: string) {
+    this.addresses.add(address)
+    this.logger.log(`Added address ${address} to monitor`)
+  }
+
+  removeAddress(address: string) {
+    this.addresses.delete(address)
+  }
+
+  get getAddresses(): string[] {
+    return Array.from(this.addresses)
+  }
+
   start() {
     setInterval(() => {
-      void this.pollAddresses(this.addresses)
+      void this.pollAddresses(this.getAddresses)
     }, this.pollIntervalMs)
     // Run immediately
-    void this.pollAddresses(this.addresses)
+    void this.pollAddresses(this.getAddresses)
   }
 
   private async pollAddresses(addressees: string[]) {

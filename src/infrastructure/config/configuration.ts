@@ -1,3 +1,4 @@
+import { Wallet } from '@/domain/entities/wallet.entity'
 import type { ThrottlerModuleOptions } from '@nestjs/throttler'
 import type { TypeOrmModuleOptions } from '@nestjs/typeorm/dist'
 import type { RedisOptions } from 'ioredis'
@@ -14,7 +15,7 @@ export default () =>
       port: parseInt(process.env.POSTGRES_PORT ?? '', 10) || 5432,
       database: process.env.POSTGRES_DATABASE,
       type: 'postgres',
-      entities: [],
+      entities: [Wallet],
       synchronize: true,
       logging: true,
     },
@@ -27,6 +28,7 @@ export default () =>
     infura_api_key: process.env.INFURA_API_KEY,
     blockcypher_api_key: process.env.BLOCKCYPHER_API_KEY,
     client_api_url: process.env.CLIENT_API_URL,
+    private_key_secret: process.env.PRIVATE_KEY_SECRET,
   }
 
 export type TConfiguration = {
@@ -43,4 +45,5 @@ export type TConfiguration = {
   infura_api_key: string
   blockcypher_api_key: string
   client_api_url: string
+  private_key_secret: string
 }

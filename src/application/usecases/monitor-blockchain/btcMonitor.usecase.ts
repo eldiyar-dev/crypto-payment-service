@@ -1,4 +1,7 @@
+import { Chain } from '@/common/enums/chain.enum'
 import { Currency } from '@/common/enums/currency.enum'
+import { Wallet } from '@/domain/entities/wallet.entity'
+import { WalletRepository } from '@/domain/repositories/walletRepository'
 import { BtcMonitorService } from '@/infrastructure/blockchain/btcMonitor.service'
 import { DepositService } from '@/infrastructure/clientApi/deposit.service'
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
@@ -10,11 +13,20 @@ export class BtcMonitorUseCase implements OnModuleInit {
   constructor(
     private readonly btcMonitorService: BtcMonitorService,
     private readonly depositService: DepositService,
+    private readonly walletRepository: WalletRepository,
   ) {}
 
-  onModuleInit() {
-    this.btcMonitorService.start()
+  async onModuleInit() {
+    const dbWallets = await this.getDBWallets()
+    dbWallets.forEach((wallet) => this.btcMonitorService.addAddress(wallet))
+
     this.execute()
+
+    this.btcMonitorService.start()
+  }
+
+  async getDBWallets(): Promise<Wallet['address'][]> {
+    return this.walletRepository.getWalletsByChain(Chain.BTC)
   }
 
   execute(): void {

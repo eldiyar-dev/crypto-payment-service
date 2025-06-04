@@ -1,5 +1,5 @@
 export enum Currency {
-  BTC,
-  ETH,
-  TRX,
+  BTC = 'BTC',
+  ETH = 'ETH',
+  TRX = 'TRX',
 }

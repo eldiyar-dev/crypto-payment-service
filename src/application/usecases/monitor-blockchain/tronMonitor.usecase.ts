@@ -1,4 +1,7 @@
+import { Chain } from '@/common/enums/chain.enum'
 import { Currency } from '@/common/enums/currency.enum'
+import { Wallet } from '@/domain/entities/wallet.entity'
+import { WalletRepository } from '@/domain/repositories/walletRepository'
 import { DepositService } from '@/infrastructure/clientApi/deposit.service'
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import { TronMonitorService } from '../../../infrastructure/blockchain/tronMonitor.service'
@@ -10,11 +13,20 @@ export class TronMonitorUseCase implements OnModuleInit {
   constructor(
     private readonly tronMonitorService: TronMonitorService,
     private readonly depositService: DepositService,
+    private readonly walletRepository: WalletRepository,
   ) {}
 
-  onModuleInit() {
-    void this.tronMonitorService.start()
+  async onModuleInit() {
+    const dbWallets = await this.getDBWallets()
+    dbWallets.forEach((wallet) => this.tronMonitorService.addAddress(wallet))
+
     this.execute()
+
+    void this.tronMonitorService.start()
+  }
+
+  async getDBWallets(): Promise<Wallet['address'][]> {
+    return this.walletRepository.getWalletsByChain(Chain.TRON)
   }
 
   execute(): void {

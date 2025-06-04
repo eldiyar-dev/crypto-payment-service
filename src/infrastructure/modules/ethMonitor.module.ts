@@ -2,9 +2,10 @@ import { EthMonitorUseCase } from '@/application/usecases/monitor-blockchain/eth
 import { Module } from '@nestjs/common'
 import { EthMonitorService } from '../blockchain/ethMonitor.service'
 import { DepositService } from '../clientApi/deposit.service'
+import { WalletModule } from './wallet.module'
 
 @Module({
-  imports: [],
+  imports: [WalletModule],
   controllers: [],
   providers: [EthMonitorUseCase, EthMonitorService, DepositService],
   exports: [EthMonitorUseCase],

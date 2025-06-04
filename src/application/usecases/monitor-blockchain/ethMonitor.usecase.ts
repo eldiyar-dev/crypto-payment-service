@@ -1,4 +1,7 @@
+import { Chain } from '@/common/enums/chain.enum'
 import { Currency } from '@/common/enums/currency.enum'
+import { Wallet } from '@/domain/entities/wallet.entity'
+import { WalletRepository } from '@/domain/repositories/walletRepository'
 import { EthMonitorService } from '@/infrastructure/blockchain/ethMonitor.service'
 import { DepositService } from '@/infrastructure/clientApi/deposit.service'
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
@@ -10,11 +13,20 @@ export class EthMonitorUseCase implements OnModuleInit {
   constructor(
     private readonly ethMonitorService: EthMonitorService,
     private readonly depositService: DepositService,
+    private readonly walletRepository: WalletRepository,
   ) {}
 
-  onModuleInit() {
-    void this.ethMonitorService.start()
+  async onModuleInit() {
+    const dbWallets = await this.getDBWallets()
+    dbWallets.forEach((wallet) => this.ethMonitorService.addAddress(wallet))
+
     this.execute()
+
+    void this.ethMonitorService.start()
+  }
+
+  async getDBWallets(): Promise<Wallet['address'][]> {
+    return this.walletRepository.getWalletsByChain(Chain.ETH)
   }
 
   execute(): void {

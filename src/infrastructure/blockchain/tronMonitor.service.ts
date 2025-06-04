@@ -11,22 +11,37 @@ type DepositCallback = (data: { address: string; amount: number }) => void
 export class TronMonitorService {
   private readonly logger = new Logger(TronMonitorService.name)
 
-  constructor(private readonly configService: ConfigService<TConfiguration>) {}
+  constructor(private readonly configService: ConfigService<TConfiguration>) {
+    ;[
+      'TUR6iqkZjsf6CXMg3bm5g9sBFZSLhmSjvm',
+      'TJRabPrwbZy45sbavfcjinPJC18kjpRTv8', // Binance
+      'TQrY8tryqsYVCYS3MFbtfirqQJqH3QJq8k', // Binance
+      'TUpMhErZL2fhh4sVNULAbNKLokS4GjC1F4', // Binance
+      'TZ4UXDJ6ZTYSBTUJ6ZQZJZ6ZQZJZ6ZQZJZ', // Test address
+      'TE2RzoSV3wFK99w6J9UnnZ4vLfXYoxvRwP',
+    ].forEach((address) => this.addAddress(address))
+  }
 
   private depositCallback: DepositCallback
 
-  private readonly addresses = [
-    'TUR6iqkZjsf6CXMg3bm5g9sBFZSLhmSjvm',
-    'TJRabPrwbZy45sbavfcjinPJC18kjpRTv8', // Binance
-    'TQrY8tryqsYVCYS3MFbtfirqQJqH3QJq8k', // Binance
-    'TUpMhErZL2fhh4sVNULAbNKLokS4GjC1F4', // Binance
-    'TZ4UXDJ6ZTYSBTUJ6ZQZJZ6ZQZJZ6ZQZJZ', // Test address
-    'TE2RzoSV3wFK99w6J9UnnZ4vLfXYoxvRwP',
-  ]
+  private readonly addresses = new Set<string>()
 
   private tronWeb: TronWeb
   private lastCheckedBlock = 0
   private readonly pollInterval = 60_000 // 1 minute
+
+  addAddress(address: string) {
+    this.addresses.add(address)
+    this.logger.log(`Added address ${address} to monitor`)
+  }
+
+  removeAddress(address: string) {
+    this.addresses.delete(address)
+  }
+
+  get getAddresses(): string[] {
+    return Array.from(this.addresses)
+  }
 
   onDeposit(callback: DepositCallback) {
     this.depositCallback = callback
@@ -75,7 +90,7 @@ export class TronMonitorService {
           const toAddress = this.tronWeb.address.fromHex(to_address)
           const trxAmount = Number(amount) / 1e6
 
-          if (!this.addresses.includes(toAddress)) continue
+          if (!this.getAddresses.includes(toAddress)) continue
           if (trxAmount < 0.001) continue
 
           this.logger.log(`Deposit detected: ${trxAmount} TRX to ${toAddress}`)
