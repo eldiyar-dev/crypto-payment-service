@@ -21,6 +21,7 @@ export default () =>
     tron_pro_api_key: process.env.TRON_PRO_API_KEY,
     infura_api_key: process.env.INFURA_API_KEY,
     blockcypher_api_key: process.env.BLOCKCYPHER_API_KEY,
+    client_api_url: process.env.CLIENT_API_URL,
   }
 
 export type TConfiguration = {
@@ -35,4 +36,5 @@ export type TConfiguration = {
   tron_pro_api_key: string
   infura_api_key: string
   blockcypher_api_key: string
+  client_api_url: string
 }

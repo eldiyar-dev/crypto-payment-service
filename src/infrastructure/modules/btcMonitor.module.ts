@@ -1,11 +1,12 @@
 import { BtcMonitorUseCase } from '@/application/usecases/monitor-blockchain/btcMonitor.usecase'
 import { Module } from '@nestjs/common'
 import { BtcMonitorService } from '../blockchain/btcMonitor.service'
+import { DepositService } from '../clientApi/deposit.service'
 
 @Module({
   imports: [],
   controllers: [],
-  providers: [BtcMonitorUseCase, BtcMonitorService],
+  providers: [BtcMonitorUseCase, BtcMonitorService, DepositService],
   exports: [BtcMonitorUseCase],
 })
 export class BtcMonitorModule {}
