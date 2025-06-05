@@ -3,7 +3,6 @@ import configuration from '@/infrastructure/config/configuration'
 import { Module } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
 import { DatabaseModule } from '../database/postgresql.module'
-import { RedisModule } from '../redis/redise.module'
 import { BtcMonitorModule } from './btcMonitor.module'
 import { EthMonitorModule } from './ethMonitor.module'
 import { HealthModule } from './health.module'
@@ -18,7 +17,7 @@ import { WalletModule } from './wallet.module'
       cache: true,
     }),
     DatabaseModule,
-    RedisModule,
+    // RedisModule,
     TronMonitorModule,
     EthMonitorModule,
     BtcMonitorModule,
