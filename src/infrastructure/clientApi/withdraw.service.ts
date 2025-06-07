@@ -20,7 +20,7 @@ export class WithdrawService {
     return {
       additionalAddress: 'TWX27NPThSd4MWfQ6bpX6NfuHK6tdiB8dJ',
       mainAddress: 'TTuZtfBV6YYuWmemQky5YnpqgQYV7NACac',
-      mainPrivateKey: '58A07760D3BB4CBC69334E69EBEC37C42DF712B8C2EAD5854FF0FD1F2B94B712',
+      mainPrivateKey: 'C7A1C54A449C5EFBEB72D41C4022C345183443BB56843A3C93DD9EC1C0D145DE',
       pie: 80,
     }
     // const baseUrl = this.configService.get('client_api_url')
