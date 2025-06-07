@@ -1,4 +1,4 @@
 export * from './app.module'
-export * from './ethMonitor.module'
-export * from './tronMonitor.module'
+export * from './blockchain'
 export * from './health.module'
+export * from './wallet.module'

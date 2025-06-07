@@ -1,9 +1,10 @@
-import { Chain, Currency } from '@/common/enums'
+import { Chain } from '@/common/enums'
 import { Wallet } from '@/domain/entities/wallet.entity'
 import { WalletRepository } from '@/domain/repositories/walletRepository'
 import { DepositService } from '@/infrastructure/clientApi/deposit.service'
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
-import { TronMonitorService } from '../../../infrastructure/blockchain/tronMonitor.service'
+import { TronMonitorService } from '../../../infrastructure/blockchain/tron/tronMonitor.service'
+import { SplitWithdrawUseCase } from '../autoWithdraw/splitWithdraw.usecase'
 
 @Injectable()
 export class TronMonitorUseCase implements OnModuleInit {
@@ -13,6 +14,7 @@ export class TronMonitorUseCase implements OnModuleInit {
     private readonly tronMonitorService: TronMonitorService,
     private readonly depositService: DepositService,
     private readonly walletRepository: WalletRepository,
+    private readonly splitWithdrawUseCase: SplitWithdrawUseCase,
   ) {}
 
   async onModuleInit() {
@@ -31,9 +33,11 @@ export class TronMonitorUseCase implements OnModuleInit {
   execute(): void {
     this.logger.log('Starting TRON monitoring...')
 
-    this.tronMonitorService.onDeposit(({ address, amount }) => {
-      this.logger.log(`New TRON deposit: ${address} ${amount}`)
-      void this.depositService.notifyNewDeposit({ currency: Currency.TRX, address, amount })
+    this.tronMonitorService.onDeposit(async ({ address, amount, currency }) => {
+      this.logger.log(`New TRON deposit: ${address} ${amount} ${currency}`)
+      void this.depositService.notifyNewDeposit({ currency, address, amount })
+
+      await this.splitWithdrawUseCase.execute({ currency, address, amount })
     })
   }
 }

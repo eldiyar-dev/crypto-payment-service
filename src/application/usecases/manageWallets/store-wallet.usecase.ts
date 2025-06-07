@@ -1,9 +1,9 @@
 import { Chain } from '@/common/enums'
 import { Wallet } from '@/domain/entities/wallet.entity'
 import { WalletRepository } from '@/domain/repositories/walletRepository'
-import { BtcMonitorService } from '@/infrastructure/blockchain/btcMonitor.service'
-import { EthMonitorService } from '@/infrastructure/blockchain/ethMonitor.service'
-import { TronMonitorService } from '@/infrastructure/blockchain/tronMonitor.service'
+import { BtcMonitorService } from '@/infrastructure/blockchain/btc/btcMonitor.service'
+import { EthMonitorService } from '@/infrastructure/blockchain/eth/ethMonitor.service'
+import { TronMonitorService } from '@/infrastructure/blockchain/tron/tronMonitor.service'
 import { Injectable } from '@nestjs/common'
 
 @Injectable()

@@ -3,10 +3,10 @@ import configuration from '@/infrastructure/config/configuration'
 import { Module } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
 import { DatabaseModule } from '../database/postgresql.module'
-import { BtcMonitorModule } from './btcMonitor.module'
-import { EthMonitorModule } from './ethMonitor.module'
+import { BtcBlockhainModule, EthBlockhainModule, TronBlockhainModule } from './blockchain'
+import { BlockchainTransactionModule } from './common'
 import { HealthModule } from './health.module'
-import { TronMonitorModule } from './tronMonitor.module'
+import { SplitWithdrawModule } from './splitWithdraw.module'
 import { WalletModule } from './wallet.module'
 
 @Module({
@@ -18,11 +18,13 @@ import { WalletModule } from './wallet.module'
     }),
     DatabaseModule,
     // RedisModule,
-    TronMonitorModule,
-    EthMonitorModule,
-    BtcMonitorModule,
+    TronBlockhainModule,
+    EthBlockhainModule,
+    BtcBlockhainModule,
+    BlockchainTransactionModule,
     HealthModule,
     WalletModule,
+    SplitWithdrawModule,
   ],
   controllers: [],
   providers: [AESCipherService],

@@ -2,7 +2,7 @@ import { withRetry } from '@/common/utils/retry.util'
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { ethers } from 'ethers'
-import { TConfiguration } from '../config/configuration'
+import { TConfiguration } from '../../config/configuration'
 
 type DepositCallback = (data: { address: string; amount: number }) => void
 

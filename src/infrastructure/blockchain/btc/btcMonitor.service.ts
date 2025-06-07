@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import axios from 'axios'
-import { TConfiguration } from '../config/configuration'
+import { TConfiguration } from '../../config/configuration'
 
 type DepositCallback = (data: { address: string; amount: number }) => void
 

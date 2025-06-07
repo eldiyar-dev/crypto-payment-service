@@ -1,7 +1,7 @@
 import { Chain, Currency } from '@/common/enums'
 import { Wallet } from '@/domain/entities/wallet.entity'
 import { WalletRepository } from '@/domain/repositories/walletRepository'
-import { EthMonitorService } from '@/infrastructure/blockchain/ethMonitor.service'
+import { EthMonitorService } from '@/infrastructure/blockchain/eth/ethMonitor.service'
 import { DepositService } from '@/infrastructure/clientApi/deposit.service'
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 

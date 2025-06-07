@@ -19,4 +19,8 @@ export class WalletRepository extends Repository<Wallet> {
     const wallets = await this.find({ where: { chain }, select: { address: true } })
     return wallets.map(({ address }) => address)
   }
+
+  async getWalletByAddress(address: Wallet['address']) {
+    return this.findOne({ where: { address } })
+  }
 }

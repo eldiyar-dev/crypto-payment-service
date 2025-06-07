@@ -1,13 +1,13 @@
-import { StoreWalletUseCase } from '@/application/usecases/manage-wallets/store-wallet.usecase'
+import { StoreWalletUseCase } from '@/application/usecases/manageWallets/store-wallet.usecase'
 import { Wallet } from '@/domain/entities/wallet.entity'
 import { WalletRepository } from '@/domain/repositories/walletRepository'
 import { WalletController } from '@/presentation/controllers/wallet.controller'
 import { HttpModule } from '@nestjs/axios'
 import { Module } from '@nestjs/common'
 import { TypeOrmModule } from '@nestjs/typeorm'
-import { BtcMonitorService } from '../blockchain/btcMonitor.service'
-import { EthMonitorService } from '../blockchain/ethMonitor.service'
-import { TronMonitorService } from '../blockchain/tronMonitor.service'
+import { BtcMonitorService } from '../blockchain/btc/btcMonitor.service'
+import { EthMonitorService } from '../blockchain/eth/ethMonitor.service'
+import { TronMonitorService } from '../blockchain/tron/tronMonitor.service'
 
 @Module({
   imports: [HttpModule, TypeOrmModule.forFeature([Wallet])],

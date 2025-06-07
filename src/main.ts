@@ -38,7 +38,7 @@ async function bootstrap() {
     }),
   )
 
-  const config = new DocumentBuilder().setTitle('LLC ElCrypto API').setDescription('The API description').setVersion('1.0').addBearerAuth().build()
+  const config = new DocumentBuilder().setTitle('LLC Crypto API').setDescription('The API description').setVersion('1.0').addBearerAuth().build()
   const document = SwaggerModule.createDocument(app, config, { extraModels: [HttpMessageDto] })
   SwaggerModule.setup('swagger', app, document)
   fs.writeFileSync('./swagger.json', JSON.stringify(document))
