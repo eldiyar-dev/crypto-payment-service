@@ -1,9 +1,10 @@
 import { Currency } from '@/common/enums'
 import { AESCipherService } from '@/common/services/aes.service'
-import { splitAmountByPercentage } from '@/common/utils/calculate.util'
+import { splitAmountByPercentage } from '@/common/utils'
 import { Wallet } from '@/domain/entities/wallet.entity'
 import { WalletRepository } from '@/domain/repositories/walletRepository'
-import { BlockchainTransactionService } from '@/infrastructure/blockchain/transaction/transaction.service'
+import { BlockchainTransactionService } from '@/infrastructure/blockchain/transaction'
+import { TronEnergyService } from '@/infrastructure/blockchain/tron'
 import { ReportService } from '@/infrastructure/clientApi/report.service'
 import { WithdrawService } from '@/infrastructure/clientApi/withdraw.service'
 import { Injectable, Logger } from '@nestjs/common'
@@ -20,6 +21,7 @@ export class SplitWithdrawUseCase {
     private readonly aesCipherService: AESCipherService,
     private readonly blockchainTransactionService: BlockchainTransactionService,
     private readonly reportService: ReportService,
+    private readonly tronEnergyService: TronEnergyService,
   ) {}
 
   /**
@@ -33,14 +35,23 @@ export class SplitWithdrawUseCase {
     try {
       // Get withdrawal wallets and pie
       const withdrawData = await this.withdrawService.getWithdrawWallets(currency, address)
-      const { mainAddress, additionalAddress, pie } = withdrawData
+      const { mainAddress, mainPrivateKey, additionalAddress, pie } = withdrawData
+
+      // Rent energy
+      if (currency === Currency.USDT) {
+        const isRentSuccess = await this.rentEnergy(mainAddress, address, mainPrivateKey)
+        if (!isRentSuccess) return
+      }
 
       // Split amount
       const { mainAmount, additionalAmount } = splitAmountByPercentage(amount, pie)
 
       // Get source wallet's encrypted private key
       const wallet = await this.walletRepository.getWalletByAddress(address)
-      if (!wallet) throw new Error('Source wallet not found')
+      if (!wallet) {
+        this.logger.error(`Source wallet not found for ${address}`)
+        return
+      }
 
       // Withdraw to additionalAddress
       if (additionalAmount) {
@@ -72,8 +83,21 @@ export class SplitWithdrawUseCase {
 
       this.logger.log(`Withdraw completed for ${address}`)
     } catch (error) {
-      this.logger.error(`Withdraw failed for ${address}: ${error.message}`)
-      throw error
+      this.logger.error(`Withdraw failed for ${address}: ${error.message}`, error)
+      return
     }
+  }
+
+  private async rentEnergy(requestAddress: string, receiverAddress: string, privateKey: string) {
+    const orderId = await this.tronEnergyService.buyResourceUsingPrivateKey({ buyAmount: 131_000, requestAddress, receiverAddress, privateKey })
+
+    if (!orderId) {
+      this.logger.error(`Failed to buy resource for ${receiverAddress}`)
+      void this.reportService.sendReport({ currency: Currency.USDT, address: requestAddress, amount: 131_000, message: `Failed to buy resource for ${receiverAddress}` })
+      return false
+    }
+
+    this.logger.log(`Rent energy for ${receiverAddress} success, orderId: ${orderId}`)
+    return true
   }
 }

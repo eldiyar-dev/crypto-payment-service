@@ -1,7 +1,7 @@
 import { StoreWalletUseCase } from '@/application/usecases/manageWallets/store-wallet.usecase'
 import { HttpMessageDto } from '@/common/dto/http.dto'
 import { IRequest } from '@/common/interfaces/reqest.interfaces'
-import { detectBlockchainNetwork } from '@/common/utils/detectBlockchainNetwork.util'
+import { detectBlockchainNetwork } from '@/common/utils'
 import { Wallet } from '@/domain/entities/wallet.entity'
 import { CreateWalletDto, CreateWalletsResponseDto } from '@/presentation/dto/create-wallet.dto'
 import { Body, Controller, HttpCode, HttpException, HttpStatus, Logger, Post, Request } from '@nestjs/common'

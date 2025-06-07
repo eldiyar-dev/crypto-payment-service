@@ -1,6 +1,6 @@
 import { USDT_CONTRACT_ADDRESS_NAIL_TESTNET } from '@/common/constants'
 import { Currency } from '@/common/enums'
-import { withRetry } from '@/common/utils/retry.util'
+import { withRetry } from '@/common/utils'
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { TronWeb } from 'tronweb'

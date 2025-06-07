@@ -21,7 +21,7 @@ export class EthMonitorUseCase implements OnModuleInit {
 
     this.execute()
 
-    void this.ethMonitorService.start()
+    // void this.ethMonitorService.start()
   }
 
   async getDBWallets(): Promise<Wallet['address'][]> {

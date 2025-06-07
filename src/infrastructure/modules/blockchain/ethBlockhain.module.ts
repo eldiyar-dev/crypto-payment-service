@@ -1,8 +1,6 @@
 import { EthMonitorUseCase } from '@/application/usecases/monitor-blockchain/ethMonitor.usecase'
-import { EthInfoService } from '@/infrastructure/blockchain/eth/ethInfo.service'
-import { EthTransactionService } from '@/infrastructure/blockchain/eth/ethTransaction.service'
+import { EthInfoService, EthMonitorService, EthTransactionService } from '@/infrastructure/blockchain/eth'
 import { Module } from '@nestjs/common'
-import { EthMonitorService } from '../../blockchain/eth/ethMonitor.service'
 import { DepositService } from '../../clientApi/deposit.service'
 import { WalletModule } from '../wallet.module'
 

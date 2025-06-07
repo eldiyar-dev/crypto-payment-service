@@ -1,7 +1,9 @@
 import { AESCipherService } from '@/common/services/aes.service'
 import configuration from '@/infrastructure/config/configuration'
+import { HttpModule } from '@nestjs/axios'
 import { Module } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
+import { TronEnergyService } from '../blockchain/tron/tronEnergy.service'
 import { DatabaseModule } from '../database/postgresql.module'
 import { BtcBlockhainModule, EthBlockhainModule, TronBlockhainModule } from './blockchain'
 import { BlockchainTransactionModule } from './common'
@@ -16,6 +18,7 @@ import { WalletModule } from './wallet.module'
       isGlobal: true,
       cache: true,
     }),
+    HttpModule.register({ global: true }),
     DatabaseModule,
     // RedisModule,
     TronBlockhainModule,
@@ -27,7 +30,7 @@ import { WalletModule } from './wallet.module'
     SplitWithdrawModule,
   ],
   controllers: [],
-  providers: [AESCipherService],
+  providers: [AESCipherService, TronEnergyService],
   exports: [AESCipherService],
 })
 export class AppModule {}

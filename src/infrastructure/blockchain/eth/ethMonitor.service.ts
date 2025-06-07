@@ -1,4 +1,4 @@
-import { withRetry } from '@/common/utils/retry.util'
+import { withRetry } from '@/common/utils'
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { ethers } from 'ethers'
