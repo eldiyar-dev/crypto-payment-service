@@ -10,8 +10,8 @@ export class TronInfoService {
 
   constructor(private readonly configService: ConfigService<TConfiguration>) {
     this.tronWeb = new TronWeb({
-      fullHost: 'https://nile.trongrid.io',
-      // headers: { 'TRON-PRO-API-KEY': this.configService.get('tron_pro_api_key') },
+      fullHost: 'https://api.trongrid.io',
+      headers: { 'TRON-PRO-API-KEY': this.configService.get('tron_pro_api_key')! },
     })
   }
 

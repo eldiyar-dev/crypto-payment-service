@@ -63,15 +63,15 @@ export class TronEnergyService {
     // it's main TWZEhq5JuUVvGtutNgnRBATbF8BnHGyn4S
     // it's testnet TATT1UzHRikft98bRFqApFTsaSw73ycfoS
     // Tronsave receiver address for testnet (Nile)
-    this.TRONSAVE_RECEIVER_ADDRESS = 'TATT1UzHRikft98bRFqApFTsaSw73ycfoS'
+    this.TRONSAVE_RECEIVER_ADDRESS = 'TWZEhq5JuUVvGtutNgnRBATbF8BnHGyn4S'
 
     // it's main https://api.tronsave.io
     // it's testnet https://api-dev.tronsave.io
-    // Tronsave API for testnet
-    this.TRONSAVE_API_URL = 'https://api-dev.tronsave.io'
+    // Tronsave API
+    this.TRONSAVE_API_URL = 'https://api.tronsave.io'
 
-    // Tron Nile testnet full node
-    this.TRON_FULL_NODE = 'https://nile.trongrid.io'
+    // Tron full node
+    this.TRON_FULL_NODE = 'https://api.trongrid.io'
 
     // Resource type to buy (ENERGY or BANDWIDTH)
     this.RESOURCE_TYPE = 'ENERGY'
