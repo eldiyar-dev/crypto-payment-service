@@ -23,19 +23,7 @@ type TResponseError = { error: string }
 export class BtcMonitorService {
   private readonly logger = new Logger(BtcMonitorService.name)
 
-  constructor(private readonly configService: ConfigService<TConfiguration>) {
-    ;[
-      'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh', // Binance
-      '3JZq4atUahhuA9rLhXLMhhTo133J9rF97j', // Bitfinex
-      '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa', // Satosh
-      '1DEP8i3QJCsomS4BSMY2RpU1upv62aGvhD',
-      '3M219KR5vEneNb47ewrPfWyb5jQ2DjxRP6', // Binance
-      '34xp4vRoCGJym3xR7yCVPFHoCNxv4Twseo', // Binance
-      '385cR5DM96n1HvBDMzLHPYcw89fZAXULJP', // Binance
-      '3Kzh9qAqVWQhEsfQz7zEQL1EuSx5tyNLNS', // Binance
-      '3JvL6Ymt8MVWiCNHC7oWU6nLeHNJKLZGLN', // Binance
-    ].forEach((address) => this.addAddress(address))
-  }
+  constructor(private readonly configService: ConfigService<TConfiguration>) {}
 
   private readonly baseUrl = 'https://api.blockcypher.com'
 

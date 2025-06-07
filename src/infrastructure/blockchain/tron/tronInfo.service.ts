@@ -1,15 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
 import { TronWeb } from 'tronweb'
+import type { TConfiguration } from '../../config/configuration'
 
 @Injectable()
 export class TronInfoService {
   private readonly logger = new Logger(TronInfoService.name)
   private readonly tronWeb: TronWeb
 
-  constructor() {
+  constructor(private readonly configService: ConfigService<TConfiguration>) {
     this.tronWeb = new TronWeb({
-      fullHost: 'https://api.trongrid.io',
-      headers: { 'TRON-PRO-API-KEY': 'your-api-key' },
+      fullHost: 'https://nile.trongrid.io',
+      // headers: { 'TRON-PRO-API-KEY': this.configService.get('tron_pro_api_key') },
     })
   }
 

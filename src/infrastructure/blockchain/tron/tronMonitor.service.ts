@@ -13,12 +13,7 @@ type DepositCallback = (data: { address: string; amount: number; currency: Curre
 export class TronMonitorService {
   private readonly logger = new Logger(TronMonitorService.name)
 
-  constructor(private readonly configService: ConfigService<TConfiguration>) {
-    // ;[
-    //   'TXuwkoF4AGbXxGAWW9yEUCLh5hnnwW9xQp', // Test address
-    //   'TJGnHLNFiwQkeEtDNnn9YRGhZJg8hKzwpx', // Test address
-    // ].forEach((address) => this.addAddress(address))
-  }
+  constructor(private readonly configService: ConfigService<TConfiguration>) {}
 
   private depositCallback: DepositCallback
 
@@ -50,12 +45,7 @@ export class TronMonitorService {
       this.tronWeb = new TronWeb({
         fullHost: 'https://nile.trongrid.io',
         // headers: { 'TRON-PRO-API-KEY': this.configService.get('tron_pro_api_key')! },
-        // privateKey: 'A97379E7C3933F322B12304B730C1B3A91E73433381858261C643CC53F8595C7',
       })
-
-      // const tx = await this.tronWeb.contract().at('TG3XXyExBkPp9nzdajDZsozEu4BkaSJozs') // USDT TRC20
-      // const result = await tx.transfer('TXuwkoF4AGbXxGAWW9yEUCLh5hnnwW9xQp', 1000000).send() // 10 USDT (6 decimals)
-      // console.log('TX:', result)
 
       // Get the latest block number at start
       const block = await this.tronWeb.trx.getCurrentBlock()
@@ -114,7 +104,6 @@ export class TronMonitorService {
 
             const contractAddress = this.tronWeb.address.fromHex(contract_address)
 
-            this.logger.log('contractAddress', contractAddress)
             // Address of USDT (TRC20) contract on Tron
             if (contractAddress !== USDT_CONTRACT_ADDRESS_NAIL_TESTNET) continue
 

@@ -44,34 +44,30 @@ export class SplitWithdrawUseCase {
 
       // Withdraw to additionalAddress
       if (additionalAmount) {
-        const receipt = await this.blockchainTransactionService.sendFunds({
+        const txHash = await this.blockchainTransactionService.sendFunds({
           currency,
           toAddress: additionalAddress,
           amount: additionalAmount,
           privateKey: wallet.privateKey,
         })
-        if (!receipt?.result) {
+        if (!txHash) {
           void this.reportService.sendReport({ currency, address, amount: additionalAmount, message: 'Withdrawal failed additional' })
-          this.logger.error(`Withdrawal failed from ${address} to ${additionalAddress} ${additionalAmount} ${currency}`, receipt)
-        }
-
-        this.logger.log(`Withdraw completed from ${address} to ${additionalAddress} ${additionalAmount} ${currency}`, receipt)
+          this.logger.error(`Withdrawal failed from ${address} to ${additionalAddress} ${additionalAmount} ${currency}`)
+        } else this.logger.log(`Withdraw completed from ${address} to ${additionalAddress} ${additionalAmount} ${currency} txHash: ${txHash}`)
       }
 
       // Withdraw to mainAddress
       if (mainAmount) {
-        const receipt = await this.blockchainTransactionService.sendFunds({
+        const txHash = await this.blockchainTransactionService.sendFunds({
           currency,
           toAddress: mainAddress,
           amount: mainAmount,
           privateKey: wallet.privateKey,
         })
-        if (!receipt?.result) {
+        if (!txHash) {
           void this.reportService.sendReport({ currency, address, amount: mainAmount, message: 'Withdrawal failed main' })
-          this.logger.error(`Withdrawal failed from ${address} to ${mainAddress} ${mainAmount} ${currency}`, receipt)
-        }
-
-        this.logger.log(`Withdraw completed from ${address} to ${mainAddress} ${mainAmount} ${currency}`, receipt)
+          this.logger.error(`Withdrawal failed from ${address} to ${mainAddress} ${mainAmount} ${currency}`)
+        } else this.logger.log(`Withdraw completed from ${address} to ${mainAddress} ${mainAmount} ${currency} txHash: ${txHash}`)
       }
 
       this.logger.log(`Withdraw completed for ${address}`)

@@ -1,10 +1,7 @@
 import { TConfiguration } from '@/infrastructure/config/configuration'
-import { Injectable } from '@nestjs/common'
+import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { TronWeb } from 'tronweb'
-import { ContractParamter } from 'tronweb/lib/esm/types/Contract'
-import { SignedTransaction } from 'tronweb/lib/esm/types/Transaction'
-import { BroadcastReturn } from 'tronweb/lib/esm/types/Trx'
 
 type SendTRC20TokenParams = {
   toAddress: string
@@ -22,16 +19,27 @@ type SendTRXParams = {
 @Injectable()
 export class TronTransactionService {
   private readonly tronWeb: TronWeb
+  private readonly logger = new Logger(TronTransactionService.name)
 
-  constructor(configService: ConfigService<TConfiguration>) {
+  constructor(private readonly configService: ConfigService<TConfiguration>) {
     this.tronWeb = new TronWeb({
-      fullHost: 'https://api.shasta.trongrid.io',
-      headers: { 'TRON-PRO-API-KEY': configService.get('tron_pro_api_key') },
+      fullHost: 'https://nile.trongrid.io',
+      // headers: { 'TRON-PRO-API-KEY': configService.get('tron_pro_api_key') },
     })
   }
 
-  async sendTRX({ toAddress, amount, privateKey }: SendTRXParams): Promise<BroadcastReturn<SignedTransaction<ContractParamter>>> {
+  /**
+   * Send TRX to an address
+   * @param toAddress - The address to send the TRX to
+   * @param amount - The amount of TRX to send
+   * @param privateKey - The private key of the account to send the TRX from
+   * @returns The transaction hash of the TRX sent
+   */
+  async sendTRX({ toAddress, amount, privateKey }: SendTRXParams): Promise<string | null> {
     try {
+      // Set the default address for this transaction
+      this.tronWeb.setPrivateKey(privateKey)
+
       // Convert amount to SUN (1 TRX = 1,000,000 SUN)
       const amountInSun = this.tronWeb.toBigNumber(amount).multipliedBy(1000000)
 
@@ -42,31 +50,50 @@ export class TronTransactionService {
       const signedTx = await this.tronWeb.trx.sign(transaction, privateKey)
 
       // Send transaction
-      const result = await this.tronWeb.trx.sendRawTransaction(signedTx)
+      const receipt = await this.tronWeb.trx.sendRawTransaction(signedTx)
 
-      return result
+      if (!receipt.result) {
+        this.logger.error(`TRX transfer to ${toAddress} failed receipt:`, receipt)
+        return null
+      }
+
+      return receipt.txid
     } catch (error) {
-      throw new Error(`TRX transfer failed: ${error.message}`)
+      this.logger.error(`TRX transfer to ${toAddress} failed: ${error.message}`)
+      return null
     }
   }
 
-  async sendTRC20Token({ toAddress, amount, privateKey, contractAddress }: SendTRC20TokenParams): Promise<BroadcastReturn<SignedTransaction<ContractParamter>>> {
+  /**
+   * Send a TRC20 token to an address
+   * @param toAddress - The address to send the TRC20 token to
+   * @param amount - The amount of TRC20 token to send
+   * @param privateKey - The private key of the account to send the TRC20 token from
+   * @param contractAddress - The address of the TRC20 token contract
+   * @returns The transaction hash of the TRC20 token sent
+   */
+  async sendTRC20Token({ toAddress, amount, privateKey, contractAddress }: SendTRC20TokenParams): Promise<string | null> {
     try {
+      // Set the default address for this transaction
+      this.tronWeb.setPrivateKey(privateKey)
+
       const contract = await this.tronWeb.contract().at(contractAddress)
 
       // Convert amount to correct format (considering token decimals)
       const amountInWei = this.tronWeb.toBigNumber(amount).multipliedBy(10 ** 6)
 
       // Create transaction
-      const transaction = await contract.transfer(toAddress, amountInWei.toString()).send({ feeLimit: 100000000, callValue: 0 })
+      const txHash = (await contract.transfer(toAddress, amountInWei.toString()).send({ feeLimit: 100000000, callValue: 0 })) satisfies string
 
-      // Sign and send
-      const signedTx = await this.tronWeb.trx.sign(transaction, privateKey)
-      const result = await this.tronWeb.trx.sendRawTransaction(signedTx)
+      if (!txHash) {
+        this.logger.error(`TRC20 transfer to ${toAddress} failed txHash:`, txHash)
+        return null
+      }
 
-      return result
+      return txHash
     } catch (error) {
-      throw new Error(`TRC20 transfer failed: ${error.message}`)
+      this.logger.error(`TRC20 transfer to ${toAddress} failed: ${error.message}`)
+      return null
     }
   }
 }
