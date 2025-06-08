@@ -16,6 +16,16 @@ type SendERC20TokenParams = {
   contractAddress: string
 }
 
+type SendAllETHParams = {
+  privateKey: string
+  toAddress: string
+}
+
+type SendAllUSDTParams = {
+  privateKey: string
+  toAddress: string
+}
+
 @Injectable()
 export class EthTransactionService {
   private readonly logger = new Logger(EthTransactionService.name)
@@ -23,33 +33,62 @@ export class EthTransactionService {
   private readonly provider: ethers.JsonRpcProvider
 
   constructor(private readonly configService: ConfigService<TConfiguration>) {
-    this.provider = new ethers.JsonRpcProvider(`https://sepolia.infura.io/v3/${this.configService.get('infura_api_key')}`)
+    this.provider = new ethers.JsonRpcProvider(`${this.configService.get('eth_rpc_url')}`)
   }
 
-  async sendETH({ toAddress, amount, privateKey }: SendETHParams) {
+  private readonly USDT_ABI = ['function balanceOf(address owner) view returns (uint256)', 'function transfer(address to, uint256 amount) returns (bool)']
+
+  private get usdtContractAddress(): string {
+    return this.configService.get('eth_usdt_contract_address')!
+  }
+
+  /**
+   * Sends ETH to a specified address
+   * @param {SendETHParams} params - Parameters for sending ETH
+   * @param {string} params.toAddress - The recipient's Ethereum address
+   * @param {number} params.amount - The amount of ETH to send
+   * @param {string} params.privateKey - The sender's private key
+   * @returns {Promise<string | null>} The transaction hash if successful, null if failed
+   * @throws {Error} If there are insufficient funds for transfer and gas
+   */
+  async sendETH({ toAddress, amount, privateKey }: SendETHParams): Promise<string | null> {
     try {
       const wallet = new ethers.Wallet(privateKey, this.provider)
+      const fromAddress = wallet.address
 
-      // Convert amount to wei
-      const amountInWei = ethers.parseEther(amount.toString())
+      // convert amount to wei
+      let amountWei = ethers.parseEther(amount.toString())
 
-      // Create transaction
-      const transaction = {
+      // get current gas parameters
+      const feeData = await this.provider.getFeeData()
+      const { maxFeePerGas, maxPriorityFeePerGas } = feeData
+
+      // estimate gas for ETH transfer (usually 21000)
+      const gasLimit = 21000
+
+      // calculate total gas cost
+      const totalGasCost = (maxFeePerGas ?? maxPriorityFeePerGas ?? 0n) * BigInt(gasLimit)
+
+      // get ETH balance
+      const balance = await this.provider.getBalance(fromAddress)
+
+      // check if there are enough funds for transfer and gas
+      if (balance < amountWei + totalGasCost) amountWei = balance - totalGasCost
+
+      // send transaction
+      const txResponse = await wallet.sendTransaction({
         to: toAddress,
-        value: amountInWei,
-        gasLimit: 21000, // Standard limit for ETH transactions
-      }
+        value: amountWei,
+        maxFeePerGas,
+        maxPriorityFeePerGas,
+        gasLimit: gasLimit,
+      })
 
-      // Get current gas price
-      const gasPrice = await this.provider.getFeeData()
-      transaction['maxFeePerGas'] = gasPrice.maxFeePerGas
-      transaction['maxPriorityFeePerGas'] = gasPrice.maxPriorityFeePerGas
+      // wait for confirmation
+      await txResponse.wait()
+      this.logger.log(`ETH transfer to ${toAddress} ${amount} ETH complete. Transaction hash: ${txResponse.hash}`)
 
-      // Send transaction
-      const tx = await wallet.sendTransaction(transaction)
-      const receipt = await tx.wait()
-
-      return receipt
+      return txResponse.hash
     } catch (error) {
       this.logger.error(`ETH transfer failed: ${error.message}`, error)
       return null
@@ -60,21 +99,126 @@ export class EthTransactionService {
     try {
       const wallet = new ethers.Wallet(privateKey, this.provider)
 
-      // ABI for transfer function
-      const abi = ['function transfer(address to, uint256 amount) returns (bool)']
-
-      const contract = new ethers.Contract(contractAddress, abi, wallet)
+      const contract = new ethers.Contract(contractAddress, this.USDT_ABI, wallet)
 
       // Convert amount to wei (assuming 6 decimals)
       const amountInWei = ethers.parseUnits(amount.toString(), 6)
+
+      const gasLimit = await contract.transfer.estimateGas(toAddress, amountInWei)
+
+      const gasPrice = await this.provider.getFeeData()
+      const estimatedFeeWei = gasLimit * (gasPrice.maxFeePerGas ?? 0n)
+      const estimatedFeeEth = ethers.formatEther(estimatedFeeWei.toString())
 
       // Send transaction
       const tx = await contract.transfer(toAddress, amountInWei)
       const receipt = await tx.wait()
 
-      return receipt
+      // actual fee
+      const txDetails2 = await this.provider.getTransaction(tx.hash as string)
+      const effectiveGasPrice2 = txDetails2?.gasPrice ?? 0n
+      const feeWei2 = receipt.gasUsed * effectiveGasPrice2
+      const feeEth2 = ethers.formatEther(feeWei2.toString())
+
+      return { receipt, fee: feeEth2, estimatedFee: estimatedFeeEth }
     } catch (error) {
       this.logger.error(`ERC20 transfer failed: ${error.message}`, error)
+      return null
+    }
+  }
+
+  /**
+   * Sends all ETH from the sender's wallet to a specified address
+   * @param {Object} params - The parameters for sending all ETH
+   * @param {string} params.privateKey - The sender's private key
+   * @param {string} params.toAddress - The recipient's address
+   * @returns {Promise<string | null>} The transaction hash, or null if failed
+   */
+  async sendAllETH({ privateKey, toAddress }: SendAllETHParams): Promise<string | null> {
+    try {
+      const wallet = new ethers.Wallet(privateKey, this.provider)
+
+      // get balance
+      const balance = await this.provider.getBalance(wallet.address)
+
+      // estimate fee
+      const gasLimit = 21000
+      const feeData = await this.provider.getFeeData()
+      const maxFeePerGas = feeData.maxFeePerGas ?? feeData.gasPrice ?? 0n
+      const maxPriorityFeePerGas = feeData.maxPriorityFeePerGas ?? 0n
+
+      // for EIP-1559
+      const gasPrice = maxFeePerGas
+      const totalFee = gasPrice * BigInt(gasLimit)
+
+      if (balance <= totalFee) throw new Error('Not enough ETH to cover gas')
+
+      // amount to send = balance - fee
+      const amountToSend = balance - totalFee
+
+      this.logger.log(`Sending ${ethers.formatEther(amountToSend)} ETH to ${toAddress}`)
+      this.logger.log(`Fee: ${ethers.formatEther(totalFee)}`)
+
+      const tx = await wallet.sendTransaction({
+        to: toAddress,
+        value: amountToSend,
+        gasLimit,
+        maxFeePerGas: gasPrice,
+        maxPriorityFeePerGas,
+      })
+
+      const receipt = await tx.wait()
+      this.logger.log(`Transaction send all ETH to ${toAddress} receipt:`, receipt)
+
+      return tx.hash
+    } catch (error) {
+      this.logger.error(`ETH transfer failed to ${toAddress}: ${error.message}`, error)
+      return null
+    }
+  }
+
+  /**
+   * Sends all USDT from the sender's wallet to a specified address
+   * @param {Object} params - The parameters for sending all USDT
+   * @param {string} params.privateKey - The sender's private key
+   * @param {string} params.toAddress - The recipient's address
+   * @returns {Promise<string | null>} The transaction hash, or null if failed
+   */
+  async sendAllUSDT({ privateKey, toAddress }: SendAllUSDTParams): Promise<string | null> {
+    try {
+      const wallet = new ethers.Wallet(privateKey, this.provider)
+      const contract = new ethers.Contract(this.usdtContractAddress, this.USDT_ABI, wallet)
+
+      // Get USDT balance
+      const usdtBalance = (await contract.balanceOf(wallet.address)) as bigint
+      if (usdtBalance === 0n) throw new Error('No USDT to send')
+
+      // Estimate fee
+      const gasLimit = await contract.transfer.estimateGas(toAddress, usdtBalance)
+
+      // Get current gas parameters
+      const { maxFeePerGas, maxPriorityFeePerGas } = await this.provider.getFeeData()
+
+      const gasPrice = maxFeePerGas ?? maxPriorityFeePerGas ?? 0n
+      const totalFee = gasPrice * gasLimit
+
+      // Check if there is enough ETH on the wallet to pay for the fee
+      const ethBalance = await this.provider.getBalance(wallet.address)
+      if (ethBalance < totalFee) throw new Error('Not enough ETH to pay for gas')
+
+      // Send all USDT
+      const tx = await contract.transfer(toAddress, usdtBalance, {
+        gasLimit,
+        gasPrice,
+        maxFeePerGas,
+        maxPriorityFeePerGas,
+      })
+      const receipt = await tx.wait()
+      this.logger.log(`Transaction send all USDT to ${toAddress} receipt:`, receipt)
+
+      return tx.hash
+    } catch (error) {
+      this.logger.error(`USDT transfer failed to ${toAddress}: ${error.message}`, error)
       return null
     }
   }

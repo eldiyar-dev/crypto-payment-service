@@ -24,13 +24,24 @@ export default () =>
       host: process.env.REDIS_HOST,
     },
     throttler: [{ ttl: 60000, limit: 10 }],
-    tron_pro_api_key: process.env.TRON_PRO_API_KEY,
-    infura_api_key: process.env.INFURA_API_KEY,
-    blockcypher_api_key: process.env.BLOCKCYPHER_API_KEY,
     client_api_url: process.env.CLIENT_API_URL,
     private_key_secret: process.env.PRIVATE_KEY_SECRET,
     ip_whitelist: (process.env.IP_WHITELIST ?? '')?.split(','),
     api_key_secret: process.env.API_KEY_SECRET,
+
+    tron_usdt_contract_address: process.env.TRON_USDT_CONTRACT_ADDRESS,
+    tron_host_url: process.env.TRON_HOST_URL,
+    tron_pro_api_key: process.env.TRON_PRO_API_KEY,
+    tronsave_api_url: process.env.TRONSAVE_API_URL,
+    tronsave_receiver_address: process.env.TRONSAVE_RECEIVER_ADDRESS,
+
+    eth_usdt_contract_address: process.env.ETH_USDT_CONTRACT_ADDRESS,
+    eth_rpc_url: process.env.ETH_RPC_URL,
+    eth_wss_url: process.env.ETH_WSS_URL,
+
+    btc_rpc_url: process.env.BTC_RPC_URL,
+
+    blockcypher_api_key: process.env.BLOCKCYPHER_API_KEY,
   }
 
 export type TConfiguration = {
@@ -43,11 +54,22 @@ export type TConfiguration = {
   postgres: TypeOrmModuleOptions
   redis: { port: RedisOptions['port']; host: RedisOptions['host'] }
   throttler: ThrottlerModuleOptions
-  tron_pro_api_key: string
-  infura_api_key: string
-  blockcypher_api_key: string
   client_api_url: string
   private_key_secret: string
   ip_whitelist: string[]
   api_key_secret: string
+
+  tron_usdt_contract_address: string
+  tron_host_url: string
+  tron_pro_api_key: string
+  tronsave_api_url: string
+  tronsave_receiver_address: string
+
+  eth_usdt_contract_address: string
+  eth_rpc_url: string
+  eth_wss_url: string
+
+  btc_rpc_url: string
+
+  blockcypher_api_key: string
 }

@@ -1,4 +1,3 @@
-import { ETH_USDT_CONTRACT_ADDRESS_SEPOLIA } from '@/common/constants/contractAddress.constant'
 import { Currency } from '@/common/enums'
 import { withRetry } from '@/common/utils'
 import { Injectable, Logger } from '@nestjs/common'
@@ -42,7 +41,7 @@ export class EthMonitorService {
   }
 
   start() {
-    this.provider = new ethers.WebSocketProvider(`wss://sepolia.infura.io/ws/v3/${this.configService.get('infura_api_key')}`)
+    this.provider = new ethers.WebSocketProvider(`${this.configService.get('eth_wss_url')}`)
 
     void this.listenEthTransfers()
     void this.listenUsdtTransfers()
@@ -91,7 +90,7 @@ export class EthMonitorService {
 
   private async listenUsdtTransfers() {
     // Create USDT contract
-    this.usdtContract = new ethers.Contract(ETH_USDT_CONTRACT_ADDRESS_SEPOLIA, this.ERC20_ABI, this.provider)
+    this.usdtContract = new ethers.Contract(this.configService.get('eth_usdt_contract_address')!, this.ERC20_ABI, this.provider)
 
     await this.usdtContract.on('Transfer', (from: string, to: string, value: ethers.BigNumberish) => {
       try {

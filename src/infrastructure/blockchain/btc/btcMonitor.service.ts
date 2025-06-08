@@ -25,6 +25,10 @@ export class BtcMonitorService {
 
   constructor(private readonly configService: ConfigService<TConfiguration>) {}
 
+  private get apiKey(): string {
+    return this.configService.get('blockcypher_api_key')!
+  }
+
   private readonly baseUrl = 'https://api.blockcypher.com'
 
   private depositCallback: DepositCallback
@@ -62,7 +66,7 @@ export class BtcMonitorService {
 
   private async pollAddresses(addressees: string[]) {
     try {
-      const url = `${this.baseUrl}/v1/btc/main/addrs/${addressees.join(';')}?token=${this.configService.get('blockcypher_api_key')}`
+      const url = `${this.baseUrl}/v1/btc/main/addrs/${addressees.join(';')}?token=${this.apiKey}`
       const { data: addresses } = await axios.get<Array<TAddressBalanceEndpoint | TResponseError>>(url)
 
       for (const address of addresses) {

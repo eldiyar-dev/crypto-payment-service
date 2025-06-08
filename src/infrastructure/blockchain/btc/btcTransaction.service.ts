@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
 import axios from 'axios'
 import * as bitcoin from 'bitcoinjs-lib'
+import { TConfiguration } from '../../config/configuration'
 
 type SendBTCParams = {
   fromAddress: string
@@ -14,9 +16,9 @@ export class BtcTransactionService {
   private readonly network: bitcoin.Network
   private readonly apiUrl: string
 
-  constructor() {
+  constructor(private readonly configService: ConfigService<TConfiguration>) {
     this.network = bitcoin.networks.bitcoin
-    this.apiUrl = 'YOUR_BTC_NODE_URL'
+    this.apiUrl = this.configService.get('btc_rpc_url')!
   }
 
   async sendBTC({ fromAddress, toAddress, amount, privateKey }: SendBTCParams) {

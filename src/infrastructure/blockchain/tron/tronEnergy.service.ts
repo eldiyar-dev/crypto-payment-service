@@ -1,5 +1,7 @@
+import { TConfiguration } from '@/infrastructure/config/configuration'
 import { HttpService } from '@nestjs/axios'
 import { Injectable, Logger } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
 import { firstValueFrom } from 'rxjs'
 import { TronWeb } from 'tronweb'
 
@@ -59,19 +61,22 @@ export class TronEnergyService {
    *
    * @param httpService - NestJS HttpService for making HTTP requests
    */
-  constructor(private readonly httpService: HttpService) {
+  constructor(
+    private readonly httpService: HttpService,
+    private readonly configService: ConfigService<TConfiguration>,
+  ) {
     // it's main TWZEhq5JuUVvGtutNgnRBATbF8BnHGyn4S
     // it's testnet TATT1UzHRikft98bRFqApFTsaSw73ycfoS
-    // Tronsave receiver address for testnet (Nile)
-    this.TRONSAVE_RECEIVER_ADDRESS = 'TATT1UzHRikft98bRFqApFTsaSw73ycfoS'
+    // Tronsave receiver address
+    this.TRONSAVE_RECEIVER_ADDRESS = this.configService.get('tronsave_receiver_address')!
 
     // it's main https://api.tronsave.io
     // it's testnet https://api-dev.tronsave.io
-    // Tronsave API for testnet
-    this.TRONSAVE_API_URL = 'https://api-dev.tronsave.io'
+    // Tronsave API
+    this.TRONSAVE_API_URL = this.configService.get('tronsave_api_url')!
 
-    // Tron Nile testnet full node
-    this.TRON_FULL_NODE = 'https://nile.trongrid.io'
+    // Tron full node
+    this.TRON_FULL_NODE = this.configService.get('tron_host_url')!
 
     // Resource type to buy (ENERGY or BANDWIDTH)
     this.RESOURCE_TYPE = 'ENERGY'

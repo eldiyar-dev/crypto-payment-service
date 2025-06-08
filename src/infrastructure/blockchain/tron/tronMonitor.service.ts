@@ -1,4 +1,3 @@
-import { NAIL_TESTNET_USDT_CONTRACT_ADDRESS } from '@/common/constants/contractAddress.constant'
 import { Currency } from '@/common/enums'
 import { withRetry } from '@/common/utils'
 import { Injectable, Logger } from '@nestjs/common'
@@ -14,6 +13,10 @@ export class TronMonitorService {
   private readonly logger = new Logger(TronMonitorService.name)
 
   constructor(private readonly configService: ConfigService<TConfiguration>) {}
+
+  private get usdtContractAddress(): string {
+    return this.configService.get('tron_usdt_contract_address')!
+  }
 
   private depositCallback: DepositCallback
 
@@ -105,7 +108,7 @@ export class TronMonitorService {
             const contractAddress = this.tronWeb.address.fromHex(contract_address)
 
             // Address of USDT (TRC20) contract on Tron
-            if (contractAddress !== NAIL_TESTNET_USDT_CONTRACT_ADDRESS) continue
+            if (contractAddress !== this.usdtContractAddress) continue
 
             // Check if the method transfer(address,uint256) is called
             if (!data?.startsWith('a9059cbb')) continue
