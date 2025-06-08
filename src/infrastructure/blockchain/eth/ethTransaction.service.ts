@@ -14,6 +14,7 @@ type SendERC20TokenParams = {
   amount: number
   privateKey: string
   contractAddress: string
+  decimals: number
 }
 
 type SendAllETHParams = {
@@ -98,32 +99,47 @@ export class EthTransactionService {
     }
   }
 
-  async sendERC20Token({ toAddress, amount, privateKey, contractAddress }: SendERC20TokenParams) {
+  /**
+   * Sends ERC20 tokens to a specified address
+   * @param {SendERC20TokenParams} params - Parameters for sending ERC20 tokens
+   * @param {string} params.toAddress - The recipient's Ethereum address
+   * @param {number} params.amount - The amount of tokens to send
+   * @param {string} params.privateKey - The sender's private key
+   * @param {string} params.contractAddress - The contract address of the ERC20 token
+   * @param {number} params.decimals - The number of decimals of the ERC20 token
+   * @returns {Promise<string | null>} The transaction hash if successful, null if failed
+   */
+  async sendERC20Token({ toAddress, amount, privateKey, contractAddress, decimals }: SendERC20TokenParams): Promise<string | null> {
     try {
       const wallet = new ethers.Wallet(privateKey, this.provider)
 
       const contract = new ethers.Contract(contractAddress, this.USDT_ABI, wallet)
 
-      // Convert amount to wei (assuming 6 decimals)
-      const amountInWei = ethers.parseUnits(amount.toString(), 6)
+      // Convert amount to wei (assuming decimals)
+      const amountInWei = ethers.parseUnits(amount.toString(), decimals)
 
       const gasLimit = await contract.transfer.estimateGas(toAddress, amountInWei)
 
-      const gasPrice = await this.provider.getFeeData()
-      const estimatedFeeWei = gasLimit * (gasPrice.maxFeePerGas ?? 0n)
-      const estimatedFeeEth = ethers.formatEther(estimatedFeeWei.toString())
+      // Get current gas parameters
+      const { maxFeePerGas, maxPriorityFeePerGas } = await this.provider.getFeeData()
+
+      const gasPrice = maxFeePerGas ?? maxPriorityFeePerGas ?? 0n
+      const totalFee = gasPrice * gasLimit
+
+      this.logger.log(`Sending ${ethers.formatEther(amountInWei)} USDT to ${toAddress}`)
+      this.logger.log(`Fee: ${ethers.formatEther(totalFee)}`)
 
       // Send transaction
-      const tx = await contract.transfer(toAddress, amountInWei)
+      const tx = await contract.transfer(toAddress, amountInWei, {
+        gasLimit,
+        gasPrice,
+        maxFeePerGas,
+        maxPriorityFeePerGas,
+      })
       const receipt = await tx.wait()
+      this.logger.log(`Transaction send ERC20 to ${toAddress} receipt:`, receipt)
 
-      // actual fee
-      const txDetails2 = await this.provider.getTransaction(tx.hash as string)
-      const effectiveGasPrice2 = txDetails2?.gasPrice ?? 0n
-      const feeWei2 = receipt.gasUsed * effectiveGasPrice2
-      const feeEth2 = ethers.formatEther(feeWei2.toString())
-
-      return { receipt, fee: feeEth2, estimatedFee: estimatedFeeEth }
+      return tx.hash
     } catch (error) {
       this.logger.error(`ERC20 transfer failed: ${error.message}`, error)
       return null
