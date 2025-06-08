@@ -1,4 +1,4 @@
-import { Currency } from '@/common/enums'
+import { Chain, Currency } from '@/common/enums'
 import { AESCipherService } from '@/common/services/aes.service'
 import { splitAmountByPercentage } from '@/common/utils'
 import { Wallet } from '@/domain/entities/wallet.entity'
@@ -9,7 +9,7 @@ import { ReportService } from '@/infrastructure/clientApi/report.service'
 import { WithdrawService } from '@/infrastructure/clientApi/withdraw.service'
 import { Injectable, Logger } from '@nestjs/common'
 
-type TWithdrawParams = { currency: Currency; address: Wallet['address']; amount: number; contractAddress?: string }
+type TWithdrawParams = { currency: Currency; address: Wallet['address']; amount: number; chain: Chain }
 
 @Injectable()
 export class SplitWithdrawUseCase {
@@ -29,16 +29,16 @@ export class SplitWithdrawUseCase {
    * @param currency - Currency (e.g., Currency.TRX USDT BTC ETH)
    * @param address - Source address (wallet to be emptied)
    * @param amount - Amount to withdraw (full balance)
-   * @param contractAddress - TRC20 contract address if needed
+   * @param chain - Chain (e.g., Chain.TRON, Chain.BTC, Chain.ETH)
    */
-  async execute({ currency, address, amount }: TWithdrawParams) {
+  async execute({ currency, address, amount, chain }: TWithdrawParams) {
     try {
       // Get withdrawal wallets and pie
       const withdrawData = await this.withdrawService.getWithdrawWallets(currency, address)
       const { mainAddress, mainPrivateKey, additionalAddress, pie } = withdrawData
 
       // Rent energy
-      if (currency === Currency.USDT) {
+      if (chain === Chain.TRON && currency === Currency.USDT) {
         const isRentSuccess = await this.rentEnergy(mainAddress, address, mainPrivateKey)
         if (!isRentSuccess) return
       }
@@ -60,6 +60,7 @@ export class SplitWithdrawUseCase {
           toAddress: additionalAddress,
           amount: additionalAmount,
           privateKey: wallet.privateKey,
+          chain,
         })
         if (!txHash) {
           void this.reportService.sendReport({ currency, address, amount: additionalAmount, message: 'Withdrawal failed additional' })
@@ -74,6 +75,7 @@ export class SplitWithdrawUseCase {
           toAddress: mainAddress,
           amount: mainAmount,
           privateKey: wallet.privateKey,
+          chain,
         })
         if (!txHash) {
           void this.reportService.sendReport({ currency, address, amount: mainAmount, message: 'Withdrawal failed main' })

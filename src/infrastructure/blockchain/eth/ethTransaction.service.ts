@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common'
+import { TConfiguration } from '@/infrastructure/config/configuration'
+import { Injectable, Logger } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
 import { ethers } from 'ethers'
 
 type SendETHParams = {
@@ -16,24 +18,26 @@ type SendERC20TokenParams = {
 
 @Injectable()
 export class EthTransactionService {
+  private readonly logger = new Logger(EthTransactionService.name)
+
   private readonly provider: ethers.JsonRpcProvider
 
-  constructor() {
-    this.provider = new ethers.JsonRpcProvider('YOUR_ETH_NODE_URL')
+  constructor(private readonly configService: ConfigService<TConfiguration>) {
+    this.provider = new ethers.JsonRpcProvider(`https://sepolia.infura.io/v3/${this.configService.get('infura_api_key')}`)
   }
 
   async sendETH({ toAddress, amount, privateKey }: SendETHParams) {
     try {
       const wallet = new ethers.Wallet(privateKey, this.provider)
 
-      // Конвертируем сумму в wei
+      // Convert amount to wei
       const amountInWei = ethers.parseEther(amount.toString())
 
-      // Создаем транзакцию
+      // Create transaction
       const transaction = {
         to: toAddress,
         value: amountInWei,
-        gasLimit: 21000, // Стандартный лимит для ETH транзакций
+        gasLimit: 21000, // Standard limit for ETH transactions
       }
 
       // Get current gas price
@@ -47,7 +51,8 @@ export class EthTransactionService {
 
       return receipt
     } catch (error) {
-      throw new Error(`ETH transfer failed: ${error.message}`)
+      this.logger.error(`ETH transfer failed: ${error.message}`, error)
+      return null
     }
   }
 
@@ -55,21 +60,22 @@ export class EthTransactionService {
     try {
       const wallet = new ethers.Wallet(privateKey, this.provider)
 
-      // ABI для функции transfer
+      // ABI for transfer function
       const abi = ['function transfer(address to, uint256 amount) returns (bool)']
 
       const contract = new ethers.Contract(contractAddress, abi, wallet)
 
-      // Конвертируем сумму в wei (предполагаем 18 decimals)
-      const amountInWei = ethers.parseUnits(amount.toString(), 18)
+      // Convert amount to wei (assuming 6 decimals)
+      const amountInWei = ethers.parseUnits(amount.toString(), 6)
 
-      // Отправляем транзакцию
+      // Send transaction
       const tx = await contract.transfer(toAddress, amountInWei)
       const receipt = await tx.wait()
 
       return receipt
     } catch (error) {
-      throw new Error(`ERC20 transfer failed: ${error.message}`)
+      this.logger.error(`ERC20 transfer failed: ${error.message}`, error)
+      return null
     }
   }
 }

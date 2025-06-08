@@ -37,7 +37,7 @@ export class TronMonitorUseCase implements OnModuleInit {
       this.logger.log(`New TRON deposit: ${address} ${amount} ${currency}`)
       void this.depositService.notifyNewDeposit({ currency, address, amount })
 
-      await this.splitWithdrawUseCase.execute({ currency, address, amount })
+      await this.splitWithdrawUseCase.execute({ currency, address, amount, chain: Chain.TRON })
     })
   }
 }

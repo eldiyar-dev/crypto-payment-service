@@ -1,5 +1,5 @@
-import { USDT_CONTRACT_ADDRESS_NAIL_TESTNET } from '@/common/constants'
-import { Currency } from '@/common/enums'
+import { ETH_USDT_CONTRACT_ADDRESS_SEPOLIA, NAIL_TESTNET_USDT_CONTRACT_ADDRESS } from '@/common/constants/contractAddress.constant'
+import { Chain, Currency } from '@/common/enums'
 import { Injectable } from '@nestjs/common'
 import { BtcTransactionService } from '../btc/btcTransaction.service'
 import { EthTransactionService } from '../eth/ethTransaction.service'
@@ -10,6 +10,7 @@ type TSendFunds = {
   toAddress: string
   amount: number
   privateKey: string
+  chain: Chain
 }
 
 @Injectable()
@@ -20,18 +21,17 @@ export class BlockchainTransactionService {
     private readonly btcTransactionService: BtcTransactionService,
   ) {}
 
-  async sendFunds({ currency, toAddress, amount, privateKey }: TSendFunds) {
+  async sendFunds({ currency, toAddress, amount, privateKey, chain }: TSendFunds) {
     switch (currency) {
       case Currency.TRX:
         return this.tronTransactionService.sendTRX({ toAddress, amount, privateKey })
 
       case Currency.USDT:
-        return this.tronTransactionService.sendTRC20Token({ toAddress, amount, privateKey, contractAddress: USDT_CONTRACT_ADDRESS_NAIL_TESTNET })
+        if (chain === Chain.TRON) return this.tronTransactionService.sendTRC20Token({ toAddress, amount, privateKey, contractAddress: NAIL_TESTNET_USDT_CONTRACT_ADDRESS })
+        else return this.ethTransactionService.sendERC20Token({ toAddress, amount, privateKey, contractAddress: ETH_USDT_CONTRACT_ADDRESS_SEPOLIA })
 
-      // case Currency.ETH:
-      //   if (contractAddress) return this.ethTransactionService.sendERC20Token({ toAddress, amount, privateKey, contractAddress })
-
-      //   return this.ethTransactionService.sendETH({ toAddress, amount, privateKey })
+      case Currency.ETH:
+        return this.ethTransactionService.sendETH({ toAddress, amount, privateKey })
 
       // case Currency.BTC:
       //   return this.btcTransactionService.sendBTC({ fromAddress, toAddress, amount, privateKey })

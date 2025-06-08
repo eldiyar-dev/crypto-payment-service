@@ -1,4 +1,4 @@
-import { USDT_CONTRACT_ADDRESS_NAIL_TESTNET } from '@/common/constants'
+import { NAIL_TESTNET_USDT_CONTRACT_ADDRESS } from '@/common/constants/contractAddress.constant'
 import { Currency } from '@/common/enums'
 import { withRetry } from '@/common/utils'
 import { Injectable, Logger } from '@nestjs/common'
@@ -105,7 +105,7 @@ export class TronMonitorService {
             const contractAddress = this.tronWeb.address.fromHex(contract_address)
 
             // Address of USDT (TRC20) contract on Tron
-            if (contractAddress !== USDT_CONTRACT_ADDRESS_NAIL_TESTNET) continue
+            if (contractAddress !== NAIL_TESTNET_USDT_CONTRACT_ADDRESS) continue
 
             // Check if the method transfer(address,uint256) is called
             if (!data?.startsWith('a9059cbb')) continue
