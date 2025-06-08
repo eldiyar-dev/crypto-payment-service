@@ -27,20 +27,20 @@ services:
   #   networks:
   #     - local
 
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    volumes:
-      - .:/home/node/app
-      - /home/node/app/node_modules
-    ports:
-      - 3000:3000
-    depends_on:
-      - db
-      # - redis
-    networks:
-      - local
+  # app:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   volumes:
+  #     - .:/home/node/app
+  #     - /home/node/app/node_modules
+  #   ports:
+  #     - 3000:3000
+  #   depends_on:
+  #     - db
+  #     # - redis
+  #   networks:
+  #     - local
 
 volumes:
   # redis_data:

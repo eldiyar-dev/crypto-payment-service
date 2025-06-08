@@ -46,7 +46,7 @@ export class TronMonitorService {
   async start(): Promise<void> {
     try {
       this.tronWeb = new TronWeb({
-        fullHost: 'https://nile.trongrid.io',
+        fullHost: this.configService.get('tron_host_url')!,
         // headers: { 'TRON-PRO-API-KEY': this.configService.get('tron_pro_api_key')! },
       })
 
