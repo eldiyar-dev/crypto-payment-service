@@ -24,7 +24,8 @@ export class TronMonitorService {
 
   private tronWeb: TronWeb
   private lastCheckedBlock = 0
-  private readonly pollInterval = 10_000 // 10 seconds
+  private readonly pollInterval = 3_000 // 3 seconds
+  private readonly confirmationThreshold = 1 // 1 confirmations
 
   addAddress(address: string) {
     this.addresses.add(address)
@@ -66,7 +67,7 @@ export class TronMonitorService {
 
   private async pollDeposits() {
     try {
-      const currentBlock = await this.tronWeb.trx.getConfirmedCurrentBlock()
+      const currentBlock = await this.tronWeb.trx.getCurrentBlock()
 
       const currentBlockNumber = currentBlock.block_header.raw_data.number
       if (this.lastCheckedBlock >= currentBlockNumber) return
@@ -77,6 +78,10 @@ export class TronMonitorService {
 
         for (const tx of block.transactions) {
           if (!tx.raw_data.contract.length || !tx.raw_data.contract) continue
+
+          // Calculate the number of confirmations
+          const confirmations = currentBlockNumber - blockNum + 1
+          if (confirmations < this.confirmationThreshold) continue
 
           const contract = tx.raw_data.contract[0]
 
