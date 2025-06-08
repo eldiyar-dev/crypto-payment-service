@@ -75,6 +75,9 @@ export class EthTransactionService {
       // check if there are enough funds for transfer and gas
       if (balance < amountWei + totalGasCost) amountWei = balance - totalGasCost
 
+      this.logger.log(`Sending ${ethers.formatEther(amountWei)} ETH to ${toAddress}`)
+      this.logger.log(`Fee: ${ethers.formatEther(totalGasCost)}`)
+
       // send transaction
       const txResponse = await wallet.sendTransaction({
         to: toAddress,
@@ -151,7 +154,10 @@ export class EthTransactionService {
       const gasPrice = maxFeePerGas
       const totalFee = gasPrice * BigInt(gasLimit)
 
-      if (balance <= totalFee) throw new Error('Not enough ETH to cover gas')
+      if (balance <= totalFee) {
+        this.logger.error(`Not enough ETH to cover gas address: ${toAddress} balance: ${balance} fee: ${totalFee}`)
+        return null
+      }
 
       // amount to send = balance - fee
       const amountToSend = balance - totalFee
@@ -191,7 +197,10 @@ export class EthTransactionService {
 
       // Get USDT balance
       const usdtBalance = (await contract.balanceOf(wallet.address)) as bigint
-      if (usdtBalance === 0n) throw new Error('No USDT to send')
+      if (usdtBalance === 0n) {
+        this.logger.error(`No USDT to send address: ${toAddress} balance: ${usdtBalance}`)
+        return null
+      }
 
       // Estimate fee
       const gasLimit = await contract.transfer.estimateGas(toAddress, usdtBalance)
@@ -204,7 +213,13 @@ export class EthTransactionService {
 
       // Check if there is enough ETH on the wallet to pay for the fee
       const ethBalance = await this.provider.getBalance(wallet.address)
-      if (ethBalance < totalFee) throw new Error('Not enough ETH to pay for gas')
+      if (ethBalance < totalFee) {
+        this.logger.error(`Not enough ETH to pay for gas address: ${toAddress} balance: ${ethBalance} fee: ${totalFee}`)
+        return null
+      }
+
+      this.logger.log(`Sending ${ethers.formatEther(usdtBalance)} USDT to ${toAddress}`)
+      this.logger.log(`Fee: ${ethers.formatEther(totalFee)}`)
 
       // Send all USDT
       const tx = await contract.transfer(toAddress, usdtBalance, {
