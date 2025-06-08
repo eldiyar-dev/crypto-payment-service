@@ -1,4 +1,4 @@
-import { USDT_CONTRACT_ADDRESS_NAIL_TESTNET } from '@/common/constants'
+import { USDT_CONTRACT_ADDRESS } from '@/common/constants'
 import { Currency } from '@/common/enums'
 import { Injectable } from '@nestjs/common'
 import { BtcTransactionService } from '../btc/btcTransaction.service'
@@ -26,7 +26,7 @@ export class BlockchainTransactionService {
         return this.tronTransactionService.sendTRX({ toAddress, amount, privateKey })
 
       case Currency.USDT:
-        return this.tronTransactionService.sendTRC20Token({ toAddress, amount, privateKey, contractAddress: USDT_CONTRACT_ADDRESS_NAIL_TESTNET })
+        return this.tronTransactionService.sendTRC20Token({ toAddress, amount, privateKey, contractAddress: USDT_CONTRACT_ADDRESS })
 
       // case Currency.ETH:
       //   if (contractAddress) return this.ethTransactionService.sendERC20Token({ toAddress, amount, privateKey, contractAddress })
