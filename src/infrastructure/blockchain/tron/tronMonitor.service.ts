@@ -47,7 +47,7 @@ export class TronMonitorService {
     try {
       this.tronWeb = new TronWeb({
         fullHost: this.configService.get('tron_host_url')!,
-        // headers: { 'TRON-PRO-API-KEY': this.configService.get('tron_pro_api_key')! },
+        headers: { 'TRON-PRO-API-KEY': this.configService.get('tron_pro_api_key')! },
       })
 
       // Get the latest block number at start

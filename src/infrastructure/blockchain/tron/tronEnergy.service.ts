@@ -85,6 +85,7 @@ export class TronEnergyService {
       fullNode: this.TRON_FULL_NODE,
       solidityNode: this.TRON_FULL_NODE,
       eventServer: this.TRON_FULL_NODE,
+      headers: { 'TRON-PRO-API-KEY': this.configService.get('tron_pro_api_key')! },
     })
   }
 
