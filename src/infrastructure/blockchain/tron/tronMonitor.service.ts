@@ -24,7 +24,7 @@ export class TronMonitorService {
 
   private tronWeb: TronWeb
   private lastCheckedBlock = 0
-  private readonly pollInterval = 10_000 // 1 minute
+  private readonly pollInterval = 10_000 // 10 seconds
 
   addAddress(address: string) {
     this.addresses.add(address)
