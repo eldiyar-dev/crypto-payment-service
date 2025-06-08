@@ -1,10 +1,11 @@
+import { Currency } from '@/common/enums'
 import { withRetry } from '@/common/utils'
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { ethers } from 'ethers'
 import { TConfiguration } from '../../config/configuration'
 
-type DepositCallback = (data: { address: string; amount: number }) => void
+type DepositCallback = (data: { address: string; amount: number; currency: Currency }) => void
 
 @Injectable()
 export class EthMonitorService {
@@ -30,17 +31,23 @@ export class EthMonitorService {
   }
 
   private provider: ethers.WebSocketProvider
+  private usdtContract: ethers.Contract
+
+  // ERC20 ABI for Transfer event
+  private readonly ERC20_ABI = ['event Transfer(address indexed from, address indexed to, uint256 value)']
 
   onDeposit(callback: DepositCallback) {
     this.depositCallback = callback
   }
 
-  async start() {
-    this.provider = new ethers.WebSocketProvider(`wss://mainnet.infura.io/ws/v3/${this.configService.get('infura_api_key')}`)
-    await this.listen()
+  start() {
+    this.provider = new ethers.WebSocketProvider(`${this.configService.get('eth_wss_url')}`)
+
+    void this.listenEthTransfers()
+    void this.listenUsdtTransfers()
   }
 
-  private async listen() {
+  private async listenEthTransfers() {
     await this.provider.on('block', async (blockNumber: number) => {
       try {
         await this.checkBlockForDeposits(blockNumber)
@@ -66,7 +73,7 @@ export class EthMonitorService {
         if (!amountEth) continue
 
         this.logger.log(`Deposit detected: ${amountEth} ETH to ${to}`)
-        this.depositCallback({ address: to, amount: amountEth })
+        this.depositCallback({ address: to, amount: amountEth, currency: Currency.ETH })
       } catch (err) {
         this.logger.error('Error processing transaction', (err as Error).message)
       }
@@ -79,5 +86,27 @@ export class EthMonitorService {
 
   private async getBlockWithRetry(blockNumber: number): Promise<ethers.Block | null> {
     return withRetry(() => this.provider.getBlock(blockNumber))
+  }
+
+  private async listenUsdtTransfers() {
+    // Create USDT contract
+    this.usdtContract = new ethers.Contract(this.configService.get('eth_usdt_contract_address')!, this.ERC20_ABI, this.provider)
+
+    await this.usdtContract.on('Transfer', (from: string, to: string, value: ethers.BigNumberish) => {
+      try {
+        this.logger.log('Transfer event received', from, to, value)
+        const toLower = to.toLowerCase()
+        if (!this.getAddresses.includes(toLower)) return
+
+        // USDT has 6 decimals
+        const amountUsdt = Number(ethers.formatUnits(value, 6))
+        if (!amountUsdt) return
+
+        this.logger.log(`Deposit detected: ${amountUsdt} USDT to ${toLower}`)
+        this.depositCallback({ address: toLower, amount: amountUsdt, currency: Currency.USDT })
+      } catch (err) {
+        this.logger.error('Error processing USDT transfer', (err as Error).message)
+      }
+    })
   }
 }

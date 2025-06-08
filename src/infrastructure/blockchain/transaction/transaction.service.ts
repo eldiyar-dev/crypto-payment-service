@@ -1,6 +1,7 @@
-import { USDT_CONTRACT_ADDRESS } from '@/common/constants'
-import { Currency } from '@/common/enums'
+import { Chain, Currency } from '@/common/enums'
 import { Injectable } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
+import { TConfiguration } from '../../config/configuration'
 import { BtcTransactionService } from '../btc/btcTransaction.service'
 import { EthTransactionService } from '../eth/ethTransaction.service'
 import { TronTransactionService } from '../tron/tronTransaction.service'
@@ -10,6 +11,7 @@ type TSendFunds = {
   toAddress: string
   amount: number
   privateKey: string
+  chain: Chain
 }
 
 @Injectable()
@@ -18,20 +20,30 @@ export class BlockchainTransactionService {
     private readonly tronTransactionService: TronTransactionService,
     private readonly ethTransactionService: EthTransactionService,
     private readonly btcTransactionService: BtcTransactionService,
+    private readonly configService: ConfigService<TConfiguration>,
   ) {}
 
-  async sendFunds({ currency, toAddress, amount, privateKey }: TSendFunds) {
+  private get tronUsdtContractAddress() {
+    return this.configService.get('tron_usdt_contract_address')!
+  }
+
+  async sendFunds({ currency, toAddress, amount, privateKey, chain }: TSendFunds) {
     switch (currency) {
       case Currency.TRX:
         return this.tronTransactionService.sendTRX({ toAddress, amount, privateKey })
 
       case Currency.USDT:
-        return this.tronTransactionService.sendTRC20Token({ toAddress, amount, privateKey, contractAddress: USDT_CONTRACT_ADDRESS })
+        if (chain === Chain.TRON)
+          return this.tronTransactionService.sendTRC20Token({
+            toAddress,
+            amount,
+            privateKey,
+            contractAddress: this.tronUsdtContractAddress,
+          })
+        else return this.ethTransactionService.sendAllUSDT({ privateKey, toAddress })
 
-      // case Currency.ETH:
-      //   if (contractAddress) return this.ethTransactionService.sendERC20Token({ toAddress, amount, privateKey, contractAddress })
-
-      //   return this.ethTransactionService.sendETH({ toAddress, amount, privateKey })
+      case Currency.ETH:
+        return this.ethTransactionService.sendAllETH({ privateKey, toAddress })
 
       // case Currency.BTC:
       //   return this.btcTransactionService.sendBTC({ fromAddress, toAddress, amount, privateKey })

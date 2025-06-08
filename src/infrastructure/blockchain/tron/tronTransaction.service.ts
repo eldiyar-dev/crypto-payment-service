@@ -23,8 +23,8 @@ export class TronTransactionService {
 
   constructor(private readonly configService: ConfigService<TConfiguration>) {
     this.tronWeb = new TronWeb({
-      fullHost: 'https://api.trongrid.io',
-      headers: { 'TRON-PRO-API-KEY': this.configService.get('tron_pro_api_key')! },
+      fullHost: this.configService.get('tron_host_url')!,
+      // headers: { 'TRON-PRO-API-KEY': configService.get('tron_pro_api_key') },
     })
   }
 

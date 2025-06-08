@@ -1,9 +1,10 @@
-import { Chain, Currency } from '@/common/enums'
+import { Chain } from '@/common/enums'
 import { Wallet } from '@/domain/entities/wallet.entity'
 import { WalletRepository } from '@/domain/repositories/walletRepository'
 import { EthMonitorService } from '@/infrastructure/blockchain/eth/ethMonitor.service'
 import { DepositService } from '@/infrastructure/clientApi/deposit.service'
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
+import { SplitWithdrawUseCase } from '../autoWithdraw/splitWithdraw.usecase'
 
 @Injectable()
 export class EthMonitorUseCase implements OnModuleInit {
@@ -13,6 +14,7 @@ export class EthMonitorUseCase implements OnModuleInit {
     private readonly ethMonitorService: EthMonitorService,
     private readonly depositService: DepositService,
     private readonly walletRepository: WalletRepository,
+    private readonly splitWithdrawUseCase: SplitWithdrawUseCase,
   ) {}
 
   async onModuleInit() {
@@ -21,7 +23,7 @@ export class EthMonitorUseCase implements OnModuleInit {
 
     this.execute()
 
-    // void this.ethMonitorService.start()
+    this.ethMonitorService.start()
   }
 
   async getDBWallets(): Promise<Wallet['address'][]> {
@@ -31,9 +33,11 @@ export class EthMonitorUseCase implements OnModuleInit {
   execute(): void {
     this.logger.log('Starting ETH monitoring...')
 
-    this.ethMonitorService.onDeposit(({ address, amount }) => {
-      this.logger.log(`New ETH deposit: ${address} ${amount}`)
-      void this.depositService.notifyNewDeposit({ currency: Currency.ETH, address, amount })
+    this.ethMonitorService.onDeposit(({ address, amount, currency }) => {
+      this.logger.log(`New ETH deposit: ${address} ${amount} ${currency}`)
+      void this.depositService.notifyNewDeposit({ currency, address, amount })
+
+      void this.splitWithdrawUseCase.execute({ currency, address, amount, chain: Chain.ETH })
     })
   }
 }
