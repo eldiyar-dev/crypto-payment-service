@@ -24,12 +24,17 @@ export class TronTransactionService {
   constructor(private readonly configService: ConfigService<TConfiguration>) {
     this.tronWeb = new TronWeb({
       fullHost: this.configService.get('tron_host_url')!,
-      headers: { 'TRON-PRO-API-KEY': configService.get('tron_pro_api_key')! },
+      headers: { 'TRON-PRO-API-KEY': this.configService.get('tron_pro_api_key')! },
     })
   }
 
   /**
-   * Send TRX to an address
+   * TRX fee in TRX
+   */
+  private readonly TRX_FEE = 0.5
+
+  /**
+   * Send TRX to an address with 0.5 TRX for fee
    * @param toAddress - The address to send the TRX to
    * @param amount - The amount of TRX to send
    * @param privateKey - The private key of the account to send the TRX from
@@ -41,7 +46,11 @@ export class TronTransactionService {
       this.tronWeb.setPrivateKey(privateKey)
 
       // Convert amount to SUN (1 TRX = 1,000,000 SUN)
-      const amountInSun = this.tronWeb.toBigNumber(amount).multipliedBy(1000000)
+      let amountInSun = this.tronWeb.toBigNumber(amount).multipliedBy(1_000_000)
+
+      // Calculate the fee
+      const feeInSun = this.tronWeb.toBigNumber(this.TRX_FEE).multipliedBy(1_000_000) // 0.5 TRX fee
+      amountInSun = amountInSun.minus(feeInSun)
 
       // Create transaction
       const transaction = await this.tronWeb.transactionBuilder.sendTrx(toAddress, amountInSun.toNumber())
@@ -59,7 +68,7 @@ export class TronTransactionService {
 
       return receipt.txid
     } catch (error) {
-      this.logger.error(`TRX transfer to ${toAddress} failed: ${error.message}`)
+      this.logger.error(`TRX transfer to ${toAddress} failed: ${error.message}`, error)
       return null
     }
   }
@@ -92,7 +101,7 @@ export class TronTransactionService {
 
       return txHash
     } catch (error) {
-      this.logger.error(`TRC20 transfer to ${toAddress} failed: ${error.message}`)
+      this.logger.error(`TRC20 transfer to ${toAddress} failed: ${error.message}`, error)
       return null
     }
   }

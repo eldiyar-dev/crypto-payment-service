@@ -96,9 +96,9 @@ export class TronMonitorService {
 
             if (!this.getAddresses.includes(toAddress)) continue
 
-            if (trxAmount < 0.001) continue
+            if (trxAmount < 1) continue
 
-            this.logger.log(`Deposit detected: ${trxAmount} TRX to ${toAddress}`)
+            this.logger.log(`Deposit detected: ${trxAmount} TRX to ${toAddress} txHash: ${tx.txID}`)
 
             void this.depositCallback({ address: toAddress, amount: trxAmount, currency: Currency.TRX })
 
@@ -130,9 +130,9 @@ export class TronMonitorService {
 
             if (!this.getAddresses.includes(toAddress)) continue
 
-            if (usdtAmount < 0.001) continue
+            if (usdtAmount < 0.5) continue
 
-            this.logger.log(`Deposit detected: ${usdtAmount} USDT to ${toAddress}`)
+            this.logger.log(`Deposit detected: ${usdtAmount} USDT to ${toAddress} txHash: ${tx.txID}`)
 
             void this.depositCallback({ address: toAddress, amount: usdtAmount, currency: Currency.USDT })
           }

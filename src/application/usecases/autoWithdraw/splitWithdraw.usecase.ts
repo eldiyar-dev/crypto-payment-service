@@ -11,6 +11,8 @@ import { Injectable, Logger } from '@nestjs/common'
 
 type TWithdrawParams = { currency: Currency; address: Wallet['address']; amount: number; chain: Chain }
 
+type TWithdrawAccountParams = { fromAddress: string; fromAddressPrivateKey: string; toAddress: string; mainPrivateKey: string; amount: number; currency: Currency; chain: Chain }
+
 @Injectable()
 export class SplitWithdrawUseCase {
   private readonly logger = new Logger(SplitWithdrawUseCase.name)
@@ -56,32 +58,28 @@ export class SplitWithdrawUseCase {
 
       // Withdraw to additionalAddress
       if (additionalAmount) {
-        const txHash = await this.blockchainTransactionService.sendFunds({
-          currency,
+        await this.withdrawAccount({
+          fromAddress: address,
+          fromAddressPrivateKey: wallet.privateKey,
           toAddress: additionalAddress,
+          mainPrivateKey,
           amount: additionalAmount,
-          privateKey: wallet.privateKey,
+          currency,
           chain,
         })
-        if (!txHash) {
-          void this.reportService.sendReport({ currency, address, amount: additionalAmount, message: 'Withdrawal failed additional' })
-          this.logger.error(`Withdrawal failed from ${address} to ${additionalAddress} ${additionalAmount} ${currency}`)
-        } else this.logger.log(`Withdraw completed from ${address} to ${additionalAddress} ${additionalAmount} ${currency} txHash: ${txHash}`)
       }
 
       // Withdraw to mainAddress
       if (mainAmount) {
-        const txHash = await this.blockchainTransactionService.sendFunds({
-          currency,
+        await this.withdrawAccount({
+          fromAddress: address,
+          fromAddressPrivateKey: wallet.privateKey,
           toAddress: mainAddress,
+          mainPrivateKey,
           amount: mainAmount,
-          privateKey: wallet.privateKey,
+          currency,
           chain,
         })
-        if (!txHash) {
-          void this.reportService.sendReport({ currency, address, amount: mainAmount, message: 'Withdrawal failed main' })
-          this.logger.error(`Withdrawal failed from ${address} to ${mainAddress} ${mainAmount} ${currency}`)
-        } else this.logger.log(`Withdraw completed from ${address} to ${mainAddress} ${mainAmount} ${currency} txHash: ${txHash}`)
       }
 
       this.logger.log(`Withdraw completed for ${address}`)
@@ -89,6 +87,32 @@ export class SplitWithdrawUseCase {
       this.logger.error(`Withdraw failed for ${address}: ${error.message}`, error)
       return
     }
+  }
+
+  private async withdrawAccount({ fromAddress, toAddress, amount, fromAddressPrivateKey, mainPrivateKey, currency, chain }: TWithdrawAccountParams) {
+    const withdrawAccount = () => this.blockchainTransactionService.sendFunds({ currency, toAddress, amount, privateKey: fromAddressPrivateKey, chain })
+
+    const reportLog = () => {
+      void this.reportService.sendReport({ currency, address: fromAddress, amount, message: 'Withdrawal failed' })
+      this.logger.error(`Withdrawal failed from ${fromAddress} to ${toAddress} ${amount} ${currency}`)
+      return false
+    }
+
+    const txHash = await withdrawAccount()
+    if (txHash) {
+      this.logger.log(`Withdraw completed from ${fromAddress} to ${toAddress} ${amount} ${currency} txHash: ${txHash}`)
+      return true
+    }
+
+    // Send 0.5 TRX for fee if account resource insufficient error
+    const isSendFeeSuccess = await this.sendHalfTrxForFee(fromAddress, mainPrivateKey)
+    if (!isSendFeeSuccess) return reportLog()
+
+    const txHash2 = await withdrawAccount()
+    if (!txHash2) return reportLog()
+
+    this.logger.log(`Withdraw completed from ${fromAddress} to ${toAddress} ${amount} ${currency} txHash: ${txHash2}`)
+    return true
   }
 
   private async rentEnergy(requestAddress: string, receiverAddress: string, privateKey: string) {
@@ -101,6 +125,31 @@ export class SplitWithdrawUseCase {
     }
 
     this.logger.log(`Rent energy for ${receiverAddress} success, orderId: ${orderId}`)
+    return true
+  }
+
+  /**
+   * Send 0.5 TRX for fee
+   * @param toAddress - Address to send the TRX to
+   * @param privateKey - Private key of the wallet to send the TRX from
+   * @returns True if the TRX was sent successfully, false otherwise
+   */
+  private async sendHalfTrxForFee(toAddress: string, privateKey: string) {
+    const txHash = await this.blockchainTransactionService.sendFunds({
+      currency: Currency.TRX,
+      toAddress,
+      amount: 1, // 1 - 0.5 = 0.5 TRX for fee
+      privateKey,
+      chain: Chain.TRON,
+    })
+
+    if (!txHash) {
+      void this.reportService.sendReport({ currency: Currency.TRX, address: toAddress, amount: 0.5, message: 'Fail send 0.5 TRX for fee' })
+      this.logger.error(`Fail send 0.5 TRX for fee to ${toAddress}`)
+      return false
+    }
+
+    this.logger.log(`Send 0.5 TRX for fee to ${toAddress} txHash: ${txHash}`)
     return true
   }
 }

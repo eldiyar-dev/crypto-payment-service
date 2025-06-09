@@ -31,7 +31,7 @@ export class BlockchainTransactionService {
     return this.configService.get('eth_usdt_contract_address')!
   }
 
-  async sendFunds({ currency, toAddress, amount, privateKey, chain }: TSendFunds) {
+  sendFunds({ currency, toAddress, amount, privateKey, chain }: TSendFunds) {
     switch (currency) {
       case Currency.TRX:
         return this.tronTransactionService.sendTRX({ toAddress, amount, privateKey })
