@@ -1,6 +1,6 @@
 import { Chain, Currency } from '@/common/enums'
 import { AESCipherService } from '@/common/services/aes.service'
-import { splitAmountByPercentage } from '@/common/utils'
+import { sleep, splitAmountByPercentage } from '@/common/utils'
 import { Wallet } from '@/domain/entities/wallet.entity'
 import { WalletRepository } from '@/domain/repositories/walletRepository'
 import { BlockchainTransactionService } from '@/infrastructure/blockchain/transaction'
@@ -41,6 +41,7 @@ export class SplitWithdrawUseCase {
       if (chain === Chain.TRON && currency === Currency.USDT) {
         const isRentSuccess = await this.rentEnergy(mainAddress, address, mainPrivateKey)
         if (!isRentSuccess) return
+        await sleep(2_000)
       }
 
       // Split amount
