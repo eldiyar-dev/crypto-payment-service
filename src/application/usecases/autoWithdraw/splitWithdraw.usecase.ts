@@ -43,7 +43,7 @@ export class SplitWithdrawUseCase {
       if (chain === Chain.TRON && currency === Currency.USDT) {
         const isRentSuccess = await this.rentEnergy(mainAddress, address, mainPrivateKey)
         if (!isRentSuccess) return
-        await sleep(2_000)
+        await sleep(5_000)
       }
 
       // Split amount
