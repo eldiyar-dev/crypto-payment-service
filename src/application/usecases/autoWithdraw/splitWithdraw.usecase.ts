@@ -41,9 +41,22 @@ export class SplitWithdrawUseCase {
 
       // Rent energy
       if (chain === Chain.TRON && currency === Currency.USDT) {
+        const remainingEnergy = await this.tronEnergyService.getAccountResourceEnergy(address)
+        this.logger.debug(`Remaining energy ${address} ${remainingEnergy}`)
+
         const isRentSuccess = await this.rentEnergy(mainAddress, address, mainPrivateKey)
         if (!isRentSuccess) return
+        const remainingEnergy2 = await this.tronEnergyService.getAccountResourceEnergy(address)
+        this.logger.debug(`Remaining energy ${address} ${remainingEnergy2}`)
+
         await sleep(5_000)
+        const remainingEnergy3 = await this.tronEnergyService.getAccountResourceEnergy(address)
+        this.logger.debug(`Remaining energy ${address} ${remainingEnergy3}`)
+
+        void sleep(5_000).then(async () => {
+          const remainingEnergy = await this.tronEnergyService.getAccountResourceEnergy(address)
+          this.logger.debug(`Remaining energy ${address} ${remainingEnergy}`)
+        })
       }
 
       // Split amount

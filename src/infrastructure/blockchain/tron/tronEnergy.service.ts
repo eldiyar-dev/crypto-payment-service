@@ -198,4 +198,19 @@ export class TronEnergyService {
     // Create the order on Tronsave
     return this.createOrder(buyAmount, signedTx, receiverAddress, unitPrice, durationSec)
   }
+
+  /**
+   * Get the remaining energy for an account
+   * @param address - The address to get the remaining energy for
+   * @returns The remaining energy for the account
+   */
+  async getAccountResourceEnergy(address: string) {
+    const resources = await this.tronWeb.trx.getAccountResources(address)
+    const totalEnergy = resources.EnergyLimit || 0
+    const usedEnergy = resources.EnergyUsed || 0
+
+    const remainingEnergy = totalEnergy - usedEnergy
+
+    return remainingEnergy
+  }
 }
