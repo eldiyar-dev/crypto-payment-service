@@ -7,6 +7,7 @@ type TDepositData = {
   currency: Currency
   address: string
   amount: number
+  txHash?: string
 }
 
 @Injectable()
@@ -19,7 +20,7 @@ export class DepositService {
     return this.configService.get('client_api_url')
   }
 
-  async notifyNewDeposit({ currency, address, amount }: TDepositData): Promise<void> {
+  async notifyNewDeposit({ currency, address, amount, txHash }: TDepositData): Promise<void> {
     try {
       // await axios.post(`${this.baseUrl}/api/new_deposit`, {
       //   currency,

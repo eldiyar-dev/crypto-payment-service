@@ -5,7 +5,7 @@ import { ConfigService } from '@nestjs/config'
 import { ethers } from 'ethers'
 import { TConfiguration } from '../../config/configuration'
 
-type DepositCallback = (data: { address: string; amount: number; currency: Currency }) => void
+type DepositCallback = (data: { address: string; amount: number; currency: Currency; txHash: string }) => void
 
 @Injectable()
 export class EthMonitorService {
@@ -72,8 +72,8 @@ export class EthMonitorService {
         const amountEth = Number(ethers.formatEther(tx.value))
         if (!amountEth) continue
 
-        this.logger.log(`Deposit detected: ${amountEth} ETH to ${to}`)
-        this.depositCallback({ address: to, amount: amountEth, currency: Currency.ETH })
+        this.logger.log(`Deposit detected: ${amountEth} ETH to ${to} txHash: ${txHash}`)
+        this.depositCallback({ address: to, amount: amountEth, currency: Currency.ETH, txHash })
       } catch (err) {
         this.logger.error('Error processing transaction', (err as Error).message)
       }
@@ -92,7 +92,7 @@ export class EthMonitorService {
     // Create USDT contract
     this.usdtContract = new ethers.Contract(this.configService.get('eth_usdt_contract_address')!, this.ERC20_ABI, this.provider)
 
-    await this.usdtContract.on('Transfer', (from: string, to: string, value: ethers.BigNumberish) => {
+    await this.usdtContract.on('Transfer', (from: string, to: string, value: ethers.BigNumberish, event) => {
       try {
         this.logger.log('Transfer event received', from, to, value)
         const toLower = to.toLowerCase()
@@ -102,8 +102,10 @@ export class EthMonitorService {
         const amountUsdt = Number(ethers.formatUnits(value, 6))
         if (!amountUsdt) return
 
-        this.logger.log(`Deposit detected: ${amountUsdt} USDT to ${toLower}`)
-        this.depositCallback({ address: toLower, amount: amountUsdt, currency: Currency.USDT })
+        const txHash = event.log.transactionHash
+
+        this.logger.log(`Deposit detected: ${amountUsdt} USDT to ${toLower} txHash: ${txHash}`)
+        this.depositCallback({ address: toLower, amount: amountUsdt, currency: Currency.USDT, txHash })
       } catch (err) {
         this.logger.error('Error processing USDT transfer', (err as Error).message)
       }

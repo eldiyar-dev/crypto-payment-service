@@ -33,9 +33,9 @@ export class EthMonitorUseCase implements OnModuleInit {
   execute(): void {
     this.logger.log('Starting ETH monitoring...')
 
-    this.ethMonitorService.onDeposit(({ address, amount, currency }) => {
-      this.logger.log(`New ETH deposit: ${address} ${amount} ${currency}`)
-      void this.depositService.notifyNewDeposit({ currency, address, amount })
+    this.ethMonitorService.onDeposit(({ address, amount, currency, txHash }) => {
+      this.logger.log(`New ETH deposit: ${address} ${amount} ${currency} txHash: ${txHash}`)
+      void this.depositService.notifyNewDeposit({ currency, address, amount, txHash })
 
       void this.splitWithdrawUseCase.execute({ currency, address, amount, chain: Chain.ETH })
     })
