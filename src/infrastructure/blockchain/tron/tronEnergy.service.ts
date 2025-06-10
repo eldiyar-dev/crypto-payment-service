@@ -36,6 +36,10 @@ interface CreateOrderResponse {
   data: { orderId: string } | null
 }
 
+type CreateOrderByApiKeyParams = { resourceAmount: number; receiverAddress: string; durationSec: number; unitPrice: number }
+
+type CreateOrderBySignParams = { resourceAmount: number; receiverAddress: string; durationSec: number; unitPrice: number; signedTx: any }
+
 /**
  * Parameters for buying resource using a private key.
  *
@@ -139,9 +143,8 @@ export class TronEnergyService {
    * @param unitPrice - Price per unit (from estimate)
    * @param durationSec - Duration in seconds for the resource
    * @returns Order ID
-   * @throws HttpException if the API call fails
    */
-  private async createOrder(resourceAmount: number, signedTx: any, receiverAddress: string, unitPrice: number, durationSec: number): Promise<string | null> {
+  private async createOrderBySign({ resourceAmount, receiverAddress, durationSec, unitPrice, signedTx }: CreateOrderBySignParams): Promise<string | null> {
     const url = `${this.TRONSAVE_API_URL}/v2/buy-resource`
     const body = { resourceType: this.RESOURCE_TYPE, resourceAmount, unitPrice, allowPartialFill: true, receiver: receiverAddress, durationSec, signedTx }
 
@@ -158,6 +161,33 @@ export class TronEnergyService {
     }
   }
 
+  /**
+   * Creates an order on Tronsave to buy ENERGY (or BANDWIDTH) with an API key.
+   *
+   * @param resourceAmount - Amount of resource to buy
+   * @param receiverAddress - Tron address to receive the resource
+   * @param durationSec - Duration in seconds for the resource
+   * @param unitPrice - Price per unit (from estimate)
+   * @returns Order ID
+   */
+  private async createOrderByApiKey({ resourceAmount, receiverAddress, durationSec, unitPrice }: CreateOrderByApiKeyParams) {
+    const url = `${this.TRONSAVE_API_URL}/v2/buy-resource`
+    const body = { resourceType: this.RESOURCE_TYPE, resourceAmount, receiver: receiverAddress, durationSec, unitPrice }
+    const headers = { 'content-type': 'application/json', apikey: this.configService.get('tronsave_api_key')! }
+
+    try {
+      const { data } = await firstValueFrom(this.httpService.post<CreateOrderResponse>(url, body, { headers }))
+
+      if (!data.data?.orderId) {
+        this.logger.error('Failed to create order', data)
+        return null
+      }
+      return data.data.orderId
+    } catch (error) {
+      this.logger.error(`Failed to create order: ${error.message}`, error)
+      return null
+    }
+  }
   /**
    * Main method to buy ENERGY for a given address using a private key.
    *
@@ -196,7 +226,36 @@ export class TronEnergyService {
     }
 
     // Create the order on Tronsave
-    return this.createOrder(buyAmount, signedTx, receiverAddress, unitPrice, durationSec)
+    return this.createOrderBySign({ signedTx, resourceAmount: buyAmount, receiverAddress, unitPrice, durationSec })
+  }
+
+  /**
+   * Main method to buy ENERGY for a given address using an API key.
+   *
+   * This method:
+   *   1. Estimates the cost and checks availability for the requested amount and duration (15 minutes).
+   *   2. Creates an order on Tronsave to allocate ENERGY to the receiver address.
+   *
+   * @param buyAmount - Amount of ENERGY to buy
+   * @param receiverAddress - Tron address to receive the ENERGY
+   * @returns Order ID
+   */
+  async buyResourceUsingApiKey({ buyAmount, receiverAddress }: { buyAmount: number; receiverAddress: string }) {
+    const durationSec = 900 // 15 minutes
+
+    // Get estimate for the requested amount and duration
+    const estimateData = await this.getEstimate(buyAmount, durationSec)
+    if (!estimateData.data || estimateData.error) return null
+
+    const { unitPrice, availableResource } = estimateData.data
+    const isReadyFulfilled = availableResource >= buyAmount
+    if (!isReadyFulfilled) {
+      this.logger.error('Not enough available resource to fulfill the order', estimateData)
+      return null
+    }
+
+    // Create the order on Tronsave
+    return this.createOrderByApiKey({ resourceAmount: buyAmount, receiverAddress, unitPrice, durationSec })
   }
 
   /**

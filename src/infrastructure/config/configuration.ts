@@ -34,6 +34,7 @@ export default () =>
     tron_pro_api_key: process.env.TRON_PRO_API_KEY,
     tronsave_api_url: process.env.TRONSAVE_API_URL,
     tronsave_receiver_address: process.env.TRONSAVE_RECEIVER_ADDRESS,
+    tronsave_api_key: process.env.TRONSAVE_API_KEY,
 
     eth_usdt_contract_address: process.env.ETH_USDT_CONTRACT_ADDRESS,
     eth_rpc_url: process.env.ETH_RPC_URL,
@@ -64,6 +65,7 @@ export type TConfiguration = {
   tron_pro_api_key: string
   tronsave_api_url: string
   tronsave_receiver_address: string
+  tronsave_api_key: string
 
   eth_usdt_contract_address: string
   eth_rpc_url: string

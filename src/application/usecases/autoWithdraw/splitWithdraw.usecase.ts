@@ -44,7 +44,7 @@ export class SplitWithdrawUseCase {
         const remainingEnergy = await this.tronEnergyService.getAccountResourceEnergy(address)
         this.logger.debug(`Remaining energy ${address} ${remainingEnergy}`)
 
-        const isRentSuccess = await this.rentEnergy(mainAddress, address, mainPrivateKey)
+        const isRentSuccess = await this.rentEnergy(address)
         if (!isRentSuccess) return
         const remainingEnergy2 = await this.tronEnergyService.getAccountResourceEnergy(address)
         this.logger.debug(`Remaining energy ${address} ${remainingEnergy2}`)
@@ -128,12 +128,12 @@ export class SplitWithdrawUseCase {
     return true
   }
 
-  private async rentEnergy(requestAddress: string, receiverAddress: string, privateKey: string) {
-    const orderId = await this.tronEnergyService.buyResourceUsingPrivateKey({ buyAmount: 131_000, requestAddress, receiverAddress, privateKey })
+  private async rentEnergy(receiverAddress: string) {
+    const orderId = await this.tronEnergyService.buyResourceUsingApiKey({ buyAmount: 131_000, receiverAddress })
 
     if (!orderId) {
       this.logger.error(`Failed to buy resource for ${receiverAddress}`)
-      void this.reportService.sendReport({ currency: Currency.USDT, address: requestAddress, amount: 131_000, message: `Failed to buy resource for ${receiverAddress}` })
+      void this.reportService.sendReport({ currency: Currency.USDT, address: receiverAddress, amount: 131_000, message: `Failed to buy resource for ${receiverAddress}` })
       return false
     }
 
