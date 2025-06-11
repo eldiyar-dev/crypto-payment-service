@@ -1,3 +1,4 @@
+import { sleep } from '@/common/utils'
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { TronWeb } from 'tronweb'
@@ -60,5 +61,24 @@ export class TronInfoService {
       this.logger.error(`Failed to get energy for address ${address}: ${error.message}`)
       throw error
     }
+  }
+
+  /**
+   * Wait for a Tron transaction to be confirmed
+   * @param txHash - The hash of the transaction to wait for
+   * @param maxAttempts - The maximum number of attempts to wait for the transaction to be confirmed
+   * @returns The confirmed transaction hash
+   */
+  async waitForTronTxConfirmation(txHash: string, maxAttempts = 120): Promise<string | null> {
+    let attempts = 0
+    while (attempts < maxAttempts) {
+      const txInfo = await this.tronWeb.trx.getTransactionInfo(txHash)
+      if (txInfo?.receipt?.result === 'SUCCESS') return txHash // confirmed
+
+      await sleep(500)
+      attempts++
+    }
+    this.logger.error(`Transaction ${txHash} not confirmed in time`)
+    return null
   }
 }

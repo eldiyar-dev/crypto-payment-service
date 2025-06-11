@@ -4,7 +4,7 @@ import { sleep, splitAmountByPercentage } from '@/common/utils'
 import { Wallet } from '@/domain/entities/wallet.entity'
 import { WalletRepository } from '@/domain/repositories/walletRepository'
 import { BlockchainTransactionService } from '@/infrastructure/blockchain/transaction'
-import { TronEnergyService } from '@/infrastructure/blockchain/tron'
+import { TronEnergyService, TronInfoService } from '@/infrastructure/blockchain/tron'
 import { ReportService } from '@/infrastructure/clientApi/report.service'
 import { WithdrawService } from '@/infrastructure/clientApi/withdraw.service'
 import { Injectable, Logger } from '@nestjs/common'
@@ -24,6 +24,7 @@ export class SplitWithdrawUseCase {
     private readonly blockchainTransactionService: BlockchainTransactionService,
     private readonly reportService: ReportService,
     private readonly tronEnergyService: TronEnergyService,
+    private readonly tronInfoService: TronInfoService,
   ) {}
 
   /**
@@ -136,20 +137,23 @@ export class SplitWithdrawUseCase {
     if (orderId) return orderId
 
     // send 0.1 TRX for active account
-    this.logger.log(`Sending 0.1 TRX for active account to ${receiverAddress}`)
-    const isSendFeeSuccess = await this.sendTrxForFeeOrActiveAccount(receiverAddress, fromAddressPrivateKey, 0.1)
-    if (!isSendFeeSuccess) {
+    const amountTRX = 0.1
+    this.logger.log(`Sending ${amountTRX} TRX for active account to ${receiverAddress}`)
+    const txHash = await this.sendTrxForFeeOrActiveAccount(receiverAddress, fromAddressPrivateKey, amountTRX)
+    if (!txHash) {
       void this.reportService.sendReport({
         currency: Currency.USDT,
         address: receiverAddress,
-        amount: 0.1,
-        message: `Failed to send 0.1 TRX for active account to ${receiverAddress}`,
+        amount: amountTRX,
+        message: `Failed to send ${amountTRX} TRX for active account to ${receiverAddress}`,
       })
       return null
     }
 
-    this.logger.log(`Successfully sent 0.1 TRX for active account to ${receiverAddress}`)
-    await sleep(2_000)
+    const confirmedTxHash = await this.tronInfoService.waitForTronTxConfirmation(txHash)
+    if (!confirmedTxHash) return null
+
+    this.logger.log(`Successfully sent ${amountTRX} TRX for active account to ${receiverAddress}`)
     const orderId2 = await this.tronEnergyService.buyResourceUsingApiKey({ buyAmount: 131_000, receiverAddress })
     if (orderId2) return orderId2
 
@@ -163,27 +167,24 @@ export class SplitWithdrawUseCase {
    * @param toAddress - Address to send the TRX to
    * @param privateKey - Private key of the wallet to send the TRX from
    * @param amount - Amount of TRX to send
-   * @returns True if the TRX was sent successfully, false otherwise
+   * @returns txHash if the TRX was sent successfully, false otherwise
    */
   private async sendTrxForFeeOrActiveAccount(toAddress: string, privateKey: string, amount: number) {
-    // Add 0.5 TRX for fee
-    amount += 0.5
-
     const txHash = await this.blockchainTransactionService.sendFunds({
       currency: Currency.TRX,
       toAddress,
-      amount,
+      amount: amount + 0.5, // Add 0.5 TRX for fee
       privateKey,
       chain: Chain.TRON,
     })
 
     if (!txHash) {
-      void this.reportService.sendReport({ currency: Currency.TRX, address: toAddress, amount: 0.5, message: 'Fail send 0.5 TRX for fee' })
-      this.logger.error(`Fail send 0.5 TRX for fee to ${toAddress}`)
+      void this.reportService.sendReport({ currency: Currency.TRX, address: toAddress, amount, message: `Fail send  ${amount} TRX for fee` })
+      this.logger.error(`Fail send ${amount} TRX for fee to ${toAddress}`)
       return false
     }
 
-    this.logger.log(`Send 0.5 TRX for fee to ${toAddress} txHash: ${txHash}`)
-    return true
+    this.logger.log(`Send ${amount} TRX for fee to ${toAddress} txHash: ${txHash}`)
+    return txHash
   }
 }
