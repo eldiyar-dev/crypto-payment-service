@@ -8,12 +8,15 @@ import * as fs from 'fs'
 import helmet from 'helmet'
 import { HttpMessageDto } from './common/dto/http.dto'
 import { TConfiguration } from './infrastructure/config/configuration'
+import { winstonConfig } from './infrastructure/config/logger.config'
 import { TrimPipe } from './presentation/pipes/trim.pipe'
 
 async function bootstrap() {
   const logger = new Logger()
 
-  const app = await NestFactory.create(AppModule)
+  const app = await NestFactory.create(AppModule, {
+    logger: winstonConfig,
+  })
 
   const configService = app.get(ConfigService<TConfiguration>)
   const port = configService.get<TConfiguration['port']>('port')!
