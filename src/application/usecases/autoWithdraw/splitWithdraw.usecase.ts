@@ -150,8 +150,8 @@ export class SplitWithdrawUseCase {
       return null
     }
 
-    const confirmedTxHash = await this.tronInfoService.waitForTronTxConfirmation(txHash)
-    if (!confirmedTxHash) return null
+    const confirmedTxBlockNumber = await this.tronInfoService.waitForTronTxConfirmation(txHash)
+    if (!confirmedTxBlockNumber) return null
 
     this.logger.log(`Successfully sent ${amountTRX} TRX for active account to ${receiverAddress}`)
     const orderId2 = await this.tronEnergyService.buyResourceUsingApiKey({ buyAmount: 131_000, receiverAddress })

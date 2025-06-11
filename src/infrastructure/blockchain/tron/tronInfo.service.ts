@@ -67,14 +67,13 @@ export class TronInfoService {
    * Wait for a Tron transaction to be confirmed
    * @param txHash - The hash of the transaction to wait for
    * @param maxAttempts - The maximum number of attempts to wait for the transaction to be confirmed
-   * @returns The confirmed transaction hash
+   * @returns The block number of the confirmed transaction
    */
-  async waitForTronTxConfirmation(txHash: string, maxAttempts = 120): Promise<string | null> {
+  async waitForTronTxConfirmation(txHash: string, maxAttempts = 1_200): Promise<number | null> {
     let attempts = 0
     while (attempts < maxAttempts) {
       const txInfo = await this.tronWeb.trx.getTransactionInfo(txHash)
-      if (txInfo?.receipt?.result === 'SUCCESS') return txHash // confirmed
-
+      if (txInfo?.blockNumber) return txInfo?.blockNumber
       await sleep(500)
       attempts++
     }
