@@ -47,8 +47,9 @@ export class SplitWithdrawUseCase {
 
       // Rent energy
       if (chain === Chain.TRON && currency === Currency.USDT) {
-        const isRentSuccess = await this.rentEnergy(address)
+        const isRentSuccess = await this.rentEnergy(address, mainPrivateKey)
         if (!isRentSuccess) return
+        this.logger.log(`Successfully rented energy for ${address}`)
         await sleep(2_000)
 
         // Debug remaining energy
@@ -114,7 +115,7 @@ export class SplitWithdrawUseCase {
     }
 
     // Send 0.5 TRX for fee if account resource/trx insufficient error
-    const isSendFeeSuccess = await this.sendHalfTrxForFee(fromAddress, mainPrivateKey)
+    const isSendFeeSuccess = await this.sendTrxForFeeOrActiveAccount(fromAddress, mainPrivateKey, 0.5)
     if (!isSendFeeSuccess) return reportLog()
 
     const txHash2 = await withdrawAccount()
@@ -124,30 +125,54 @@ export class SplitWithdrawUseCase {
     return true
   }
 
-  private async rentEnergy(receiverAddress: string) {
+  /**
+   * Rent energy
+   * @param receiverAddress - Address to receive the energy
+   * @param fromAddressPrivateKey - Private key of the wallet to send the TRX from
+   * @returns Order ID if the energy was rented successfully, null otherwise
+   */
+  private async rentEnergy(receiverAddress: string, fromAddressPrivateKey: string) {
     const orderId = await this.tronEnergyService.buyResourceUsingApiKey({ buyAmount: 131_000, receiverAddress })
+    if (orderId) return orderId
 
-    if (!orderId) {
-      this.logger.error(`Failed to buy resource for ${receiverAddress}`)
-      void this.reportService.sendReport({ currency: Currency.USDT, address: receiverAddress, amount: 131_000, message: `Failed to buy resource for ${receiverAddress}` })
-      return false
+    // send 0.1 TRX for active account
+    this.logger.log(`Sending 0.1 TRX for active account to ${receiverAddress}`)
+    const isSendFeeSuccess = await this.sendTrxForFeeOrActiveAccount(receiverAddress, fromAddressPrivateKey, 0.1)
+    if (!isSendFeeSuccess) {
+      void this.reportService.sendReport({
+        currency: Currency.USDT,
+        address: receiverAddress,
+        amount: 0.1,
+        message: `Failed to send 0.1 TRX for active account to ${receiverAddress}`,
+      })
+      return null
     }
 
-    this.logger.log(`Rent energy for ${receiverAddress} success, orderId: ${orderId}`)
-    return true
+    this.logger.log(`Successfully sent 0.1 TRX for active account to ${receiverAddress}`)
+    await sleep(2_000)
+    const orderId2 = await this.tronEnergyService.buyResourceUsingApiKey({ buyAmount: 131_000, receiverAddress })
+    if (orderId2) return orderId2
+
+    this.logger.error(`Failed to buy 131_000 Energy for ${receiverAddress}`)
+    void this.reportService.sendReport({ currency: Currency.USDT, address: receiverAddress, amount: 131_000, message: `Failed to buy 131000 Energy for ${receiverAddress}` })
+    return null
   }
 
   /**
-   * Send 0.5 TRX for fee
+   * Send TRX for fee/active account
    * @param toAddress - Address to send the TRX to
    * @param privateKey - Private key of the wallet to send the TRX from
+   * @param amount - Amount of TRX to send
    * @returns True if the TRX was sent successfully, false otherwise
    */
-  private async sendHalfTrxForFee(toAddress: string, privateKey: string) {
+  private async sendTrxForFeeOrActiveAccount(toAddress: string, privateKey: string, amount: number) {
+    // Add 0.5 TRX for fee
+    amount += 0.5
+
     const txHash = await this.blockchainTransactionService.sendFunds({
       currency: Currency.TRX,
       toAddress,
-      amount: 1, // 1 - 0.5 = 0.5 TRX for fee
+      amount,
       privateKey,
       chain: Chain.TRON,
     })
