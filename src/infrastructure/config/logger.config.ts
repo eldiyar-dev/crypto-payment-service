@@ -1,25 +1,34 @@
 import { WinstonModule } from 'nest-winston'
-import * as winston from 'winston'
+import { format, transports } from 'winston'
+import 'winston-daily-rotate-file'
 
 export const winstonConfig = WinstonModule.createLogger({
   transports: [
-    new winston.transports.Console({
-      format: winston.format.combine(
-        winston.format.timestamp(),
-        winston.format.colorize(),
-        winston.format.printf(({ timestamp, level, message, context }) => {
+    new transports.Console({
+      format: format.combine(
+        format.timestamp(),
+        format.colorize(),
+        format.printf(({ timestamp, level, message, context }: { timestamp: string; level: string; message: string; context: string }) => {
           return `${timestamp} [${context}] ${level}: ${message}`
         }),
       ),
     }),
-    new winston.transports.File({
-      filename: 'logs/error.log',
+    new transports.DailyRotateFile({
+      // %DATE will be replaced by the current date
+      filename: `logs/%DATE%-error.log`,
       level: 'error',
-      format: winston.format.combine(winston.format.timestamp(), winston.format.json()),
+      format: format.combine(format.timestamp(), format.json()),
+      datePattern: 'YYYY-MM-DD',
+      zippedArchive: false, // don't want to zip our logs
+      maxFiles: '30d', // will keep log until they are older than 30 days
     }),
-    new winston.transports.File({
-      filename: 'logs/combined.log',
-      format: winston.format.combine(winston.format.timestamp(), winston.format.json()),
+    // same for all levels
+    new transports.DailyRotateFile({
+      filename: `logs/%DATE%-combined.log`,
+      format: format.combine(format.timestamp(), format.json()),
+      datePattern: 'YYYY-MM-DD',
+      zippedArchive: false,
+      maxFiles: '30d',
     }),
   ],
 })
