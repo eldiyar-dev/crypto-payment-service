@@ -21,7 +21,7 @@ export class BtcMonitorUseCase implements OnModuleInit {
 
     this.execute()
 
-    this.btcMonitorService.start()
+    await this.btcMonitorService.start()
   }
 
   async getDBWallets(): Promise<Wallet['address'][]> {

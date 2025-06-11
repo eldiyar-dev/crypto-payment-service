@@ -1,22 +1,24 @@
+import { Chain } from '@/common/enums'
+import { RedisService } from '@/infrastructure/redis/redis.service'
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import axios from 'axios'
 import { TConfiguration } from '../../config/configuration'
-
 type DepositCallback = (data: { address: string; amount: number }) => void
 
 @Injectable()
 export class BtcMonitorService {
   private readonly logger = new Logger(BtcMonitorService.name)
 
-  constructor(private readonly configService: ConfigService<TConfiguration>) {}
+  constructor(
+    private readonly configService: ConfigService<TConfiguration>,
+    private readonly redisService: RedisService,
+  ) {}
 
   // Blockstream API base URL
   private readonly baseUrl = 'https://blockstream.info/api'
 
   private depositCallback: DepositCallback
-
-  private readonly addresses = new Set<string>()
 
   private readonly pollIntervalMs = 60_000
 
@@ -26,25 +28,25 @@ export class BtcMonitorService {
     this.depositCallback = callback
   }
 
-  addAddress(address: string) {
-    this.addresses.add(address)
-    this.logger.log(`Added address ${address} to monitor`)
+  async addAddress(address: string) {
+    try {
+      await this.redisService.addAddress(Chain.BTC, address)
+      this.logger.log(`Added address ${address} to monitor`)
+    } catch (error: unknown) {
+      this.logger.error(`Error adding address ${address} to monitor`, error)
+    }
   }
 
-  removeAddress(address: string) {
-    this.addresses.delete(address)
+  async getAddresses(): Promise<string[]> {
+    return this.redisService.getAddresses(Chain.BTC)
   }
 
-  getAddresses(): string[] {
-    return Array.from(this.addresses)
-  }
-
-  start() {
-    setInterval(() => {
-      void this.pollAddresses(this.getAddresses())
+  async start() {
+    setInterval(async () => {
+      void this.pollAddresses(await this.getAddresses())
     }, this.pollIntervalMs)
     // Run immediately
-    void this.pollAddresses(this.getAddresses())
+    void this.pollAddresses(await this.getAddresses())
   }
 
   private async pollAddresses(addresses: string[]) {

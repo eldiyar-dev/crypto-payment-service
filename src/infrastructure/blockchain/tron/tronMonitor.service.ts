@@ -1,5 +1,6 @@
-import { Currency } from '@/common/enums'
+import { Chain, Currency } from '@/common/enums'
 import { withRetry } from '@/common/utils'
+import { RedisService } from '@/infrastructure/redis/redis.service'
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { TronWeb } from 'tronweb'
@@ -12,7 +13,10 @@ type DepositCallback = (data: { address: string; amount: number; currency: Curre
 export class TronMonitorService {
   private readonly logger = new Logger(TronMonitorService.name)
 
-  constructor(private readonly configService: ConfigService<TConfiguration>) {}
+  constructor(
+    private readonly configService: ConfigService<TConfiguration>,
+    private readonly redisService: RedisService,
+  ) {}
 
   private get usdtContractAddress(): string {
     return this.configService.get('tron_usdt_contract_address')!
@@ -20,24 +24,22 @@ export class TronMonitorService {
 
   private depositCallback: DepositCallback
 
-  private readonly addresses = new Set<string>()
-
   private tronWeb: TronWeb
   private lastCheckedBlock = 0
   private readonly pollInterval = 3_000 // 3 seconds
   private readonly confirmationThreshold = 1 // 1 confirmations
 
-  addAddress(address: string) {
-    this.addresses.add(address)
-    this.logger.log(`Added address ${address} to monitor`)
+  async addAddress(address: string) {
+    try {
+      await this.redisService.addAddress(Chain.TRON, address)
+      this.logger.log(`Added address ${address} to monitor`)
+    } catch (error: unknown) {
+      this.logger.error(`Error adding address ${address} to monitor`, error)
+    }
   }
 
-  removeAddress(address: string) {
-    this.addresses.delete(address)
-  }
-
-  getAddresses(): string[] {
-    return Array.from(this.addresses)
+  async getAddresses(): Promise<string[]> {
+    return this.redisService.getAddresses(Chain.TRON)
   }
 
   onDeposit(callback: DepositCallback) {
@@ -58,8 +60,6 @@ export class TronMonitorService {
       setInterval(() => {
         void this.pollDeposits()
       }, this.pollInterval)
-      // Run immediately
-      void this.pollDeposits()
     } catch (error: unknown) {
       this.logger.error('Error starting Tron monitor', error)
     }
@@ -94,7 +94,7 @@ export class TronMonitorService {
 
             const trxAmount = Number(amount) / 1e6
 
-            if (!this.getAddresses().includes(toAddress)) continue
+            if (!(await this.getAddresses()).includes(toAddress)) continue
 
             if (trxAmount < 1) continue
 
@@ -128,7 +128,7 @@ export class TronMonitorService {
 
             const usdtAmount = parseInt(amountHex, 16) / 1e6 // 6 decimal places
 
-            if (!this.getAddresses().includes(toAddress)) continue
+            if (!(await this.getAddresses()).includes(toAddress)) continue
 
             if (usdtAmount < 0.5) continue
 

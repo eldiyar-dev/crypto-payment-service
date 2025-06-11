@@ -1,5 +1,6 @@
-import { Currency } from '@/common/enums'
+import { Chain, Currency } from '@/common/enums'
 import { withRetry } from '@/common/utils'
+import { RedisService } from '@/infrastructure/redis/redis.service'
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { ethers } from 'ethers'
@@ -11,23 +12,24 @@ type DepositCallback = (data: { address: string; amount: number; currency: Curre
 export class EthMonitorService {
   private readonly logger = new Logger(EthMonitorService.name)
 
-  constructor(private readonly configService: ConfigService<TConfiguration>) {}
+  constructor(
+    private readonly configService: ConfigService<TConfiguration>,
+    private readonly redisService: RedisService,
+  ) {}
 
   private depositCallback: DepositCallback
 
-  private readonly addresses = new Set<string>()
-
-  addAddress(address: string) {
-    this.addresses.add(address.toLowerCase())
-    this.logger.log(`Added address ${address} to monitor`)
+  async addAddress(address: string) {
+    try {
+      await this.redisService.addAddress(Chain.ETH, address)
+      this.logger.log(`Added address ${address} to monitor`)
+    } catch (error: unknown) {
+      this.logger.error(`Error adding address ${address} to monitor`, error)
+    }
   }
 
-  getAddresses(): string[] {
-    return Array.from(this.addresses)
-  }
-
-  removeAddress(address: string) {
-    this.addresses.delete(address)
+  async getAddresses(): Promise<string[]> {
+    return this.redisService.getAddresses(Chain.ETH)
   }
 
   private provider: ethers.WebSocketProvider
@@ -67,7 +69,7 @@ export class EthMonitorService {
         if (!tx?.to) continue
 
         const to = tx.to.toLowerCase()
-        if (!this.getAddresses().includes(to)) continue
+        if (!(await this.getAddresses()).includes(to)) continue
 
         const amountEth = Number(ethers.formatEther(tx.value))
         if (!amountEth) continue
@@ -92,11 +94,11 @@ export class EthMonitorService {
     // Create USDT contract
     this.usdtContract = new ethers.Contract(this.configService.get('eth_usdt_contract_address')!, this.ERC20_ABI, this.provider)
 
-    await this.usdtContract.on('Transfer', (from: string, to: string, value: ethers.BigNumberish, event) => {
+    await this.usdtContract.on('Transfer', async (from: string, to: string, value: ethers.BigNumberish, event) => {
       try {
         this.logger.log('Transfer event received', from, to, value)
         const toLower = to.toLowerCase()
-        if (!this.getAddresses().includes(toLower)) return
+        if (!(await this.getAddresses()).includes(toLower)) return
 
         // USDT has 6 decimals
         const amountUsdt = Number(ethers.formatUnits(value, 6))

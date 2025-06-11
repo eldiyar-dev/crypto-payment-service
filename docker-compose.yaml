@@ -14,18 +14,18 @@ services:
     networks:
       - local
 
-  # redis:
-  #   image: 'redis:alpine'
-  #   environment:
-  #     # ALLOW_EMPTY_PASSWORD is recommended only for development.
-  #     - ALLOW_EMPTY_PASSWORD=yes
-  #     - REDIS_DISABLE_COMMANDS=FLUSHDB,FLUSHALL
-  #   ports:
-  #     - '6379:6379'
-  #   volumes:
-  #     - 'redis_data:/bitnami/redis/data'
-  #   networks:
-  #     - local
+  redis:
+    image: 'redis:alpine'
+    environment:
+      # ALLOW_EMPTY_PASSWORD is recommended only for development.
+      - ALLOW_EMPTY_PASSWORD=yes
+      - REDIS_DISABLE_COMMANDS=FLUSHDB,FLUSHALL
+    ports:
+      - '6379:6379'
+    volumes:
+      - 'redis_data:/bitnami/redis/data'
+    networks:
+      - local
 
   # app:
   #   build:
@@ -43,8 +43,8 @@ services:
   #     - local
 
 volumes:
-  # redis_data:
-  #   driver: local
+  redis_data:
+    driver: local
   database-data:
 
 networks:

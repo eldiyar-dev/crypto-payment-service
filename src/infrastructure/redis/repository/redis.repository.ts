@@ -17,6 +17,14 @@ export class RedisRepository implements OnModuleDestroy {
     return this.redisClient.set(key, value)
   }
 
+  setArray(key: RedisKey, value: (string | Buffer | number)[] | string | Buffer | number) {
+    return this.redisClient.sadd(key, ...(Array.isArray(value) ? value : [value]))
+  }
+
+  getArray(key: RedisKey) {
+    return this.redisClient.smembers(key)
+  }
+
   delete(...keys: RedisKey[]) {
     return this.redisClient.del(keys)
   }
