@@ -22,7 +22,7 @@ export class EthMonitorService {
     this.logger.log(`Added address ${address} to monitor`)
   }
 
-  get getAddresses(): string[] {
+  getAddresses(): string[] {
     return Array.from(this.addresses)
   }
 
@@ -67,7 +67,7 @@ export class EthMonitorService {
         if (!tx?.to) continue
 
         const to = tx.to.toLowerCase()
-        if (!this.getAddresses.includes(to)) continue
+        if (!this.getAddresses().includes(to)) continue
 
         const amountEth = Number(ethers.formatEther(tx.value))
         if (!amountEth) continue
@@ -96,7 +96,7 @@ export class EthMonitorService {
       try {
         this.logger.log('Transfer event received', from, to, value)
         const toLower = to.toLowerCase()
-        if (!this.getAddresses.includes(toLower)) return
+        if (!this.getAddresses().includes(toLower)) return
 
         // USDT has 6 decimals
         const amountUsdt = Number(ethers.formatUnits(value, 6))

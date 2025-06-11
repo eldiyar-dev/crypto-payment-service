@@ -36,7 +36,7 @@ export class TronMonitorService {
     this.addresses.delete(address)
   }
 
-  get getAddresses(): string[] {
+  getAddresses(): string[] {
     return Array.from(this.addresses)
   }
 
@@ -94,7 +94,7 @@ export class TronMonitorService {
 
             const trxAmount = Number(amount) / 1e6
 
-            if (!this.getAddresses.includes(toAddress)) continue
+            if (!this.getAddresses().includes(toAddress)) continue
 
             if (trxAmount < 1) continue
 
@@ -128,7 +128,7 @@ export class TronMonitorService {
 
             const usdtAmount = parseInt(amountHex, 16) / 1e6 // 6 decimal places
 
-            if (!this.getAddresses.includes(toAddress)) continue
+            if (!this.getAddresses().includes(toAddress)) continue
 
             if (usdtAmount < 0.5) continue
 
