@@ -33,8 +33,8 @@ export class TronMonitorService {
     try {
       await this.redisService.addAddress(Chain.TRON, address)
       this.logger.log(`Added address ${address} to monitor`)
-    } catch (error: unknown) {
-      this.logger.error(`Error adding address ${address} to monitor`, error)
+    } catch (error) {
+      this.logger.error(`Error adding address ${address} to monitor ${error.message}`)
     }
   }
 
@@ -60,8 +60,8 @@ export class TronMonitorService {
       setInterval(() => {
         void this.pollDeposits()
       }, this.pollInterval)
-    } catch (error: unknown) {
-      this.logger.error('Error starting Tron monitor', error)
+    } catch (error) {
+      this.logger.error(`Error starting Tron monitor ${error.message}`)
     }
   }
 

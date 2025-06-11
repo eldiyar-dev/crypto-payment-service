@@ -23,8 +23,8 @@ export class EthMonitorService {
     try {
       await this.redisService.addAddress(Chain.ETH, address)
       this.logger.log(`Added address ${address} to monitor`)
-    } catch (error: unknown) {
-      this.logger.error(`Error adding address ${address} to monitor`, error)
+    } catch (error) {
+      this.logger.error(`Error adding address ${address} to monitor ${error.message}`)
     }
   }
 

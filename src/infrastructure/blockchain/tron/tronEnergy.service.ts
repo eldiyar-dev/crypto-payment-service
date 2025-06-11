@@ -109,7 +109,7 @@ export class TronEnergyService {
       const { data } = await firstValueFrom(this.httpService.post<EstimateResponse>(url, body, { headers: { 'content-type': 'application/json' } }))
       return data
     } catch (error) {
-      this.logger.error(`Failed to get estimate: ${error.message}`, error)
+      this.logger.error(`Failed to get estimate: ${error.message}`)
       return { error: true, message: error.message, data: null }
     }
   }
@@ -129,7 +129,7 @@ export class TronEnergyService {
       const signedTx = await this.tronWeb.trx.sign(dataSendTrx, privateKey)
       return signedTx
     } catch (error) {
-      this.logger.error(`Failed to sign transaction: ${error.message}`, error)
+      this.logger.error(`Failed to sign transaction: ${error.message}`)
       return null
     }
   }
@@ -156,7 +156,7 @@ export class TronEnergyService {
       }
       return data.data.orderId
     } catch (error) {
-      this.logger.error(`Failed to create order: ${error.message}`, error)
+      this.logger.error(`Failed to create order: ${error.message}`)
       return null
     }
   }
@@ -184,7 +184,7 @@ export class TronEnergyService {
       }
       return data.data.orderId
     } catch (error) {
-      this.logger.error(`Failed to create order: ${error.message}`, error)
+      this.logger.error(`Failed to create order: ${error.message}`)
       return null
     }
   }

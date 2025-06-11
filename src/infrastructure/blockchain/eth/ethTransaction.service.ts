@@ -94,7 +94,7 @@ export class EthTransactionService {
 
       return txResponse.hash
     } catch (error) {
-      this.logger.error(`ETH transfer failed: ${error.message}`, error)
+      this.logger.error(`ETH transfer failed: ${error.message}`)
       return null
     }
   }
@@ -141,7 +141,7 @@ export class EthTransactionService {
 
       return tx.hash
     } catch (error) {
-      this.logger.error(`ERC20 transfer failed: ${error.message}`, error)
+      this.logger.error(`ERC20 transfer failed: ${error.message}`)
       return null
     }
   }
@@ -194,7 +194,7 @@ export class EthTransactionService {
 
       return tx.hash
     } catch (error) {
-      this.logger.error(`ETH transfer failed to ${toAddress}: ${error.message}`, error)
+      this.logger.error(`ETH transfer failed to ${toAddress}: ${error.message}`)
       return null
     }
   }
@@ -249,7 +249,7 @@ export class EthTransactionService {
 
       return tx.hash
     } catch (error) {
-      this.logger.error(`USDT transfer failed to ${toAddress}: ${error.message}`, error)
+      this.logger.error(`USDT transfer failed to ${toAddress}: ${error.message}`)
       return null
     }
   }

@@ -71,7 +71,7 @@ export class TronTransactionService {
 
       return receipt.txid
     } catch (error) {
-      this.logger.error(`TRX transfer to ${toAddress} failed: ${error.message}`, error)
+      this.logger.error(`TRX transfer to ${toAddress} failed: ${error.message}`)
       return null
     }
   }
@@ -106,7 +106,7 @@ export class TronTransactionService {
 
       return txHash
     } catch (error) {
-      this.logger.error(`TRC20 transfer to ${toAddress} failed: ${error.message}`, error)
+      this.logger.error(`TRC20 transfer to ${toAddress} failed: ${error.message}`)
       return null
     }
   }

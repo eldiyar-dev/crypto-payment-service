@@ -93,7 +93,7 @@ export class SplitWithdrawUseCase {
 
       this.logger.log(`Withdraw completed for ${address}`)
     } catch (error) {
-      this.logger.error(`Withdraw failed for ${address}: ${error.message}`, error)
+      this.logger.error(`Withdraw failed for ${address}: ${error.message}`)
       return
     }
   }

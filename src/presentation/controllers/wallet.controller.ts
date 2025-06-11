@@ -56,7 +56,7 @@ export class WalletController {
 
       return { success: true, message: 'Wallets saved successfully' }
     } catch (error) {
-      this.logger.error('Error creating wallets', error)
+      this.logger.error(`Error creating wallets ${error.message}`)
       throw new HttpException('Internal server error', HttpStatus.INTERNAL_SERVER_ERROR)
     }
   }
