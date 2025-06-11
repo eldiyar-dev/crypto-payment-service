@@ -18,11 +18,12 @@ type SendTRXParams = {
 
 @Injectable()
 export class TronTransactionService {
-  private readonly tronWeb: TronWeb
   private readonly logger = new Logger(TronTransactionService.name)
 
-  constructor(private readonly configService: ConfigService<TConfiguration>) {
-    this.tronWeb = new TronWeb({
+  constructor(private readonly configService: ConfigService<TConfiguration>) {}
+
+  private tronWebClass() {
+    return new TronWeb({
       fullHost: this.configService.get('tron_host_url')!,
       headers: { 'TRON-PRO-API-KEY': this.configService.get('tron_pro_api_key')! },
     })
@@ -42,24 +43,26 @@ export class TronTransactionService {
    */
   async sendTRX({ toAddress, amount, privateKey }: SendTRXParams): Promise<string | null> {
     try {
+      const tronWeb = this.tronWebClass()
+
       // Set the default address for this transaction
-      this.tronWeb.setPrivateKey(privateKey)
+      tronWeb.setPrivateKey(privateKey)
 
       // Convert amount to SUN (1 TRX = 1,000,000 SUN)
-      let amountInSun = this.tronWeb.toBigNumber(amount).multipliedBy(1_000_000)
+      let amountInSun = tronWeb.toBigNumber(amount).multipliedBy(1_000_000)
 
       // Calculate the fee
-      const feeInSun = this.tronWeb.toBigNumber(this.TRX_FEE).multipliedBy(1_000_000) // 0.5 TRX fee
+      const feeInSun = tronWeb.toBigNumber(this.TRX_FEE).multipliedBy(1_000_000) // 0.5 TRX fee
       amountInSun = amountInSun.minus(feeInSun)
 
       // Create transaction
-      const transaction = await this.tronWeb.transactionBuilder.sendTrx(toAddress, amountInSun.toNumber())
+      const transaction = await tronWeb.transactionBuilder.sendTrx(toAddress, amountInSun.toNumber())
 
       // Sign transaction
-      const signedTx = await this.tronWeb.trx.sign(transaction, privateKey)
+      const signedTx = await tronWeb.trx.sign(transaction, privateKey)
 
       // Send transaction
-      const receipt = await this.tronWeb.trx.sendRawTransaction(signedTx)
+      const receipt = await tronWeb.trx.sendRawTransaction(signedTx)
 
       if (!receipt.result) {
         this.logger.error(`TRX transfer to ${toAddress} failed receipt:`, receipt)
@@ -83,13 +86,15 @@ export class TronTransactionService {
    */
   async sendTRC20Token({ toAddress, amount, privateKey, contractAddress }: SendTRC20TokenParams): Promise<string | null> {
     try {
-      // Set the default address for this transaction
-      this.tronWeb.setPrivateKey(privateKey)
+      const tronWeb = this.tronWebClass()
 
-      const contract = await this.tronWeb.contract().at(contractAddress)
+      // Set the default address for this transaction
+      tronWeb.setPrivateKey(privateKey)
+
+      const contract = await tronWeb.contract().at(contractAddress)
 
       // Convert amount to correct format (considering token decimals)
-      const amountInWei = this.tronWeb.toBigNumber(amount).multipliedBy(10 ** 6)
+      const amountInWei = tronWeb.toBigNumber(amount).multipliedBy(10 ** 6)
 
       // Create transaction
       const txHash = (await contract.transfer(toAddress, amountInWei.toString()).send({ feeLimit: 100000000, callValue: 0 })) satisfies string

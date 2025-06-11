@@ -6,7 +6,7 @@ import { TronWeb } from 'tronweb'
 import { Block } from 'tronweb/lib/esm/types/APIResponse'
 import type { TConfiguration } from '../../config/configuration'
 
-type DepositCallback = (data: { address: string; amount: number; currency: Currency }) => Promise<void>
+type DepositCallback = (data: { address: string; amount: number; currency: Currency; txHash: string }) => Promise<void>
 
 @Injectable()
 export class TronMonitorService {
@@ -100,7 +100,7 @@ export class TronMonitorService {
 
             this.logger.log(`Deposit detected: ${trxAmount} TRX to ${toAddress} txHash: ${tx.txID}`)
 
-            void this.depositCallback({ address: toAddress, amount: trxAmount, currency: Currency.TRX })
+            void this.depositCallback({ address: toAddress, amount: trxAmount, currency: Currency.TRX, txHash: tx.txID })
 
             continue
           }
@@ -134,7 +134,7 @@ export class TronMonitorService {
 
             this.logger.log(`Deposit detected: ${usdtAmount} USDT to ${toAddress} txHash: ${tx.txID}`)
 
-            void this.depositCallback({ address: toAddress, amount: usdtAmount, currency: Currency.USDT })
+            void this.depositCallback({ address: toAddress, amount: usdtAmount, currency: Currency.USDT, txHash: tx.txID })
           }
         }
       }

@@ -37,26 +37,22 @@ export class SplitWithdrawUseCase {
     try {
       // Get withdrawal wallets and pie
       const withdrawData = await this.withdrawService.getWithdrawWallets(currency, address)
+      if (!withdrawData) {
+        this.logger.error(`Failed to get withdrawal wallets for ${address}`)
+        void this.reportService.sendReport({ currency, address, amount, message: `Failed to get withdrawal wallets for ${address}` })
+        return
+      }
+
       const { mainAddress, mainPrivateKey, additionalAddress, pie } = withdrawData
 
       // Rent energy
       if (chain === Chain.TRON && currency === Currency.USDT) {
-        const remainingEnergy = await this.tronEnergyService.getAccountResourceEnergy(address)
-        this.logger.debug(`Remaining energy ${address} ${remainingEnergy}`)
-
         const isRentSuccess = await this.rentEnergy(address)
         if (!isRentSuccess) return
-        const remainingEnergy2 = await this.tronEnergyService.getAccountResourceEnergy(address)
-        this.logger.debug(`Remaining energy ${address} ${remainingEnergy2}`)
+        await sleep(2_000)
 
-        await sleep(5_000)
-        const remainingEnergy3 = await this.tronEnergyService.getAccountResourceEnergy(address)
-        this.logger.debug(`Remaining energy ${address} ${remainingEnergy3}`)
-
-        void sleep(5_000).then(async () => {
-          const remainingEnergy = await this.tronEnergyService.getAccountResourceEnergy(address)
-          this.logger.debug(`Remaining energy ${address} ${remainingEnergy}`)
-        })
+        // Debug remaining energy
+        void this.tronEnergyService.getAccountResourceEnergy(address).then((energy) => this.logger.debug(`Remaining energy ${address} ${energy}`))
       }
 
       // Split amount
@@ -117,7 +113,7 @@ export class SplitWithdrawUseCase {
       return true
     }
 
-    // Send 0.5 TRX for fee if account resource insufficient error
+    // Send 0.5 TRX for fee if account resource/trx insufficient error
     const isSendFeeSuccess = await this.sendHalfTrxForFee(fromAddress, mainPrivateKey)
     if (!isSendFeeSuccess) return reportLog()
 
