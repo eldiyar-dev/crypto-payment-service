@@ -51,6 +51,8 @@ export class SplitWithdrawUseCase {
         const isRentSuccess = await this.rentEnergy(address, mainPrivateKey)
         if (!isRentSuccess) return
         this.logger.log(`Successfully rented energy for ${address}`)
+
+        // Wait for 2 seconds to ensure the energy is rented
         await sleep(2_000)
 
         // Debug remaining energy
@@ -95,7 +97,7 @@ export class SplitWithdrawUseCase {
 
       this.logger.log(`Withdraw completed for ${address}`)
     } catch (error) {
-      this.logger.error(`Withdraw failed for ${address}: ${error.message}`)
+      this.logger.error(`Withdraw failed for ${address}: ${error.message}`, error)
       return
     }
   }
@@ -116,7 +118,7 @@ export class SplitWithdrawUseCase {
     }
 
     // Send 0.5 TRX for fee if account resource/trx insufficient error
-    const isSendFeeSuccess = await this.sendTrxForFeeOrActiveAccount(fromAddress, mainPrivateKey, 0.5)
+    const isSendFeeSuccess = await this.sendTrxForFeeOrActiveAccount(fromAddress, mainPrivateKey, 'fee')
     if (!isSendFeeSuccess) return reportLog()
 
     const txHash2 = await withdrawAccount()
@@ -139,7 +141,7 @@ export class SplitWithdrawUseCase {
     // send 0.1 TRX for active account
     const amountTRX = 0.1
     this.logger.log(`Sending ${amountTRX} TRX for active account to ${receiverAddress}`)
-    const txHash = await this.sendTrxForFeeOrActiveAccount(receiverAddress, fromAddressPrivateKey, amountTRX)
+    const txHash = await this.sendTrxForFeeOrActiveAccount(receiverAddress, fromAddressPrivateKey, 'active')
     if (!txHash) {
       void this.reportService.sendReport({
         currency: Currency.USDT,
@@ -147,13 +149,25 @@ export class SplitWithdrawUseCase {
         amount: amountTRX,
         message: `Failed to send ${amountTRX} TRX for active account to ${receiverAddress}`,
       })
+      this.logger.error(`Failed to send ${amountTRX} TRX for active account to ${receiverAddress}`)
       return null
     }
 
+    // Wait for tx confirmation
     const confirmedTxBlockNumber = await this.tronInfoService.waitForTronTxConfirmation(txHash)
-    if (!confirmedTxBlockNumber) return null
-
+    if (!confirmedTxBlockNumber) {
+      void this.reportService.sendReport({
+        currency: Currency.USDT,
+        address: receiverAddress,
+        amount: amountTRX,
+        message: `Failed wait for tx confirmation for active account to ${receiverAddress}`,
+      })
+      this.logger.error(`Failed wait for tx confirmation for active account to ${receiverAddress}`)
+      return null
+    }
     this.logger.log(`Successfully sent ${amountTRX} TRX for active account to ${receiverAddress}`)
+
+    // Rent energy again after tx confirmation
     const orderId2 = await this.tronEnergyService.buyResourceUsingApiKey({ buyAmount: 131_000, receiverAddress })
     if (orderId2) return orderId2
 
@@ -166,25 +180,26 @@ export class SplitWithdrawUseCase {
    * Send TRX for fee/active account
    * @param toAddress - Address to send the TRX to
    * @param privateKey - Private key of the wallet to send the TRX from
-   * @param amount - Amount of TRX to send
+   * @param type - Type of TRX to send (fee/active)
    * @returns txHash if the TRX was sent successfully, false otherwise
    */
-  private async sendTrxForFeeOrActiveAccount(toAddress: string, privateKey: string, amount: number) {
+  private async sendTrxForFeeOrActiveAccount(toAddress: string, privateKey: string, type: 'fee' | 'active') {
+    const amount = type === 'fee' ? 0.5 : 0.1
     const txHash = await this.blockchainTransactionService.sendFunds({
       currency: Currency.TRX,
       toAddress,
-      amount: amount + 0.5, // Add 0.5 TRX for fee
+      amount: amount + 0.5, // + 0.5 TRX for fee
       privateKey,
       chain: Chain.TRON,
     })
 
     if (!txHash) {
-      void this.reportService.sendReport({ currency: Currency.TRX, address: toAddress, amount, message: `Fail send  ${amount} TRX for fee` })
-      this.logger.error(`Fail send ${amount} TRX for fee to ${toAddress}`)
+      void this.reportService.sendReport({ currency: Currency.TRX, address: toAddress, amount, message: `Fail send ${amount} TRX for ${type}` })
+      this.logger.error(`Fail send ${amount} TRX for ${type} to ${toAddress}`)
       return false
     }
 
-    this.logger.log(`Send ${amount} TRX for fee to ${toAddress} txHash: ${txHash}`)
+    this.logger.log(`Send ${amount} TRX for ${type} to ${toAddress} txHash: ${txHash}`)
     return txHash
   }
 }

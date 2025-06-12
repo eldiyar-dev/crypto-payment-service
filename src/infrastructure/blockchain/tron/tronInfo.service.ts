@@ -73,8 +73,8 @@ export class TronInfoService {
     let attempts = 0
     while (attempts < maxAttempts) {
       const txInfo = await this.tronWeb.trx.getTransactionInfo(txHash)
-      if (txInfo?.blockNumber) return txInfo?.blockNumber
-      await sleep(500)
+      if (txInfo?.blockNumber) return txInfo.blockNumber
+      await sleep(1_000)
       attempts++
     }
     this.logger.error(`Transaction ${txHash} not confirmed in time`)
