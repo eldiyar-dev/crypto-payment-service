@@ -71,7 +71,7 @@ export class SplitWithdrawUseCase {
 
       // Withdraw to additionalAddress
       if (additionalAmount) {
-        await this.withdrawAccount({
+        void this.withdrawAccount({
           fromAddress: address,
           fromAddressPrivateKey: wallet.privateKey,
           toAddress: additionalAddress,
@@ -84,7 +84,7 @@ export class SplitWithdrawUseCase {
 
       // Withdraw to mainAddress
       if (mainAmount) {
-        await this.withdrawAccount({
+        void this.withdrawAccount({
           fromAddress: address,
           fromAddressPrivateKey: wallet.privateKey,
           toAddress: mainAddress,
@@ -94,8 +94,6 @@ export class SplitWithdrawUseCase {
           chain,
         })
       }
-
-      this.logger.log(`Withdraw completed for ${address}`)
     } catch (error) {
       this.logger.error(`Withdraw failed for ${address}: ${error.message}`, error)
       return
@@ -103,29 +101,33 @@ export class SplitWithdrawUseCase {
   }
 
   private async withdrawAccount({ fromAddress, toAddress, amount, fromAddressPrivateKey, mainPrivateKey, currency, chain }: TWithdrawAccountParams) {
-    const withdrawAccount = () => this.blockchainTransactionService.sendFunds({ currency, toAddress, amount, privateKey: fromAddressPrivateKey, chain })
-
     const reportLog = () => {
       void this.reportService.sendReport({ currency, address: fromAddress, amount, message: 'Withdrawal failed' })
       this.logger.error(`Withdrawal failed from ${fromAddress} to ${toAddress} ${amount} ${currency}`)
       return false
     }
 
-    const txHash = await withdrawAccount()
-    if (txHash) {
-      this.logger.log(`Withdraw completed from ${fromAddress} to ${toAddress} ${amount} ${currency} txHash: ${txHash}`)
+    try {
+      const withdrawAccount = () => this.blockchainTransactionService.sendFunds({ currency, toAddress, amount, privateKey: fromAddressPrivateKey, chain })
+
+      const txHash = await withdrawAccount()
+      if (txHash) {
+        this.logger.log(`Withdraw completed from ${fromAddress} to ${toAddress} ${amount} ${currency} txHash: ${txHash}`)
+        return true
+      }
+
+      // Send 0.5 TRX for fee if account resource/trx insufficient error
+      const isSendFeeSuccess = await this.sendTrxForFeeOrActiveAccount(fromAddress, mainPrivateKey, 'fee')
+      if (!isSendFeeSuccess) return reportLog()
+
+      const txHash2 = await withdrawAccount()
+      if (!txHash2) return reportLog()
+
+      this.logger.log(`Withdraw completed from ${fromAddress} to ${toAddress} ${amount} ${currency} txHash: ${txHash2}`)
       return true
+    } catch {
+      return reportLog()
     }
-
-    // Send 0.5 TRX for fee if account resource/trx insufficient error
-    const isSendFeeSuccess = await this.sendTrxForFeeOrActiveAccount(fromAddress, mainPrivateKey, 'fee')
-    if (!isSendFeeSuccess) return reportLog()
-
-    const txHash2 = await withdrawAccount()
-    if (!txHash2) return reportLog()
-
-    this.logger.log(`Withdraw completed from ${fromAddress} to ${toAddress} ${amount} ${currency} txHash: ${txHash2}`)
-    return true
   }
 
   /**
