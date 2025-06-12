@@ -1,6 +1,6 @@
 import { Chain, Currency } from '@/common/enums'
 import { AESCipherService } from '@/common/services/aes.service'
-import { sleep, splitAmountByPercentage } from '@/common/utils'
+import { generateUniqueAmount, sleep, splitAmountByPercentage } from '@/common/utils'
 import { Wallet } from '@/domain/entities/wallet.entity'
 import { WalletRepository } from '@/domain/repositories/walletRepository'
 import { BlockchainTransactionService } from '@/infrastructure/blockchain/transaction'
@@ -191,7 +191,7 @@ export class SplitWithdrawUseCase {
     const txHash = await this.blockchainTransactionService.sendFunds({
       currency: Currency.TRX,
       toAddress,
-      amount: amount + 0.5, // + 0.5 TRX for fee
+      amount: generateUniqueAmount(amount + 0.5), // + 0.5 TRX for fee
       privateKey,
       chain: Chain.TRON,
     })
