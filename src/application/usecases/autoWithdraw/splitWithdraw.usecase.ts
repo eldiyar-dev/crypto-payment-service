@@ -137,7 +137,8 @@ export class SplitWithdrawUseCase {
    * @returns Order ID if the energy was rented successfully, null otherwise
    */
   private async rentEnergy(receiverAddress: string, fromAddressPrivateKey: string) {
-    const orderId = await this.tronEnergyService.buyResourceUsingApiKey({ buyAmount: 131_000, receiverAddress })
+    const energyAmount = 160_000
+    const orderId = await this.tronEnergyService.buyResourceUsingApiKey({ buyAmount: energyAmount, receiverAddress })
     if (orderId) return orderId
 
     // send 0.1 TRX for active account
@@ -170,11 +171,11 @@ export class SplitWithdrawUseCase {
     this.logger.log(`Successfully sent ${amountTRX} TRX for active account to ${receiverAddress}`)
 
     // Rent energy again after tx confirmation
-    const orderId2 = await this.tronEnergyService.buyResourceUsingApiKey({ buyAmount: 131_000, receiverAddress })
+    const orderId2 = await this.tronEnergyService.buyResourceUsingApiKey({ buyAmount: energyAmount, receiverAddress })
     if (orderId2) return orderId2
 
-    this.logger.error(`Failed to buy 131_000 Energy for ${receiverAddress}`)
-    void this.reportService.sendReport({ currency: Currency.USDT, address: receiverAddress, amount: 131_000, message: `Failed to buy 131000 Energy for ${receiverAddress}` })
+    this.logger.error(`Failed to buy ${energyAmount} Energy for ${receiverAddress}`)
+    void this.reportService.sendReport({ currency: Currency.USDT, address: receiverAddress, amount: energyAmount, message: `Failed to buy 131000 Energy for ${receiverAddress}` })
     return null
   }
 
