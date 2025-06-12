@@ -48,9 +48,9 @@ export class SplitWithdrawUseCase {
 
       // Rent energy
       if (chain === Chain.TRON && currency === Currency.USDT) {
-        const isRentSuccess = await this.rentEnergy(address, mainPrivateKey)
-        if (!isRentSuccess) return
-        this.logger.log(`Successfully rented energy for ${address}`)
+        const orderId = await this.rentEnergy(address, mainPrivateKey)
+        if (!orderId) return
+        this.logger.log(`Successfully rented energy for ${address} orderId: ${orderId}`)
 
         // Wait for 2 seconds to ensure the energy is rented
         await sleep(2_000)
@@ -141,8 +141,8 @@ export class SplitWithdrawUseCase {
     const orderId = await this.tronEnergyService.buyResourceUsingApiKey({ buyAmount: energyAmount, receiverAddress })
     if (orderId) return orderId
 
-    // send 0.1 TRX for active account
-    const amountTRX = 0.1
+    // send 0.5 TRX for active account
+    const amountTRX = 0.5
     this.logger.log(`Sending ${amountTRX} TRX for active account to ${receiverAddress}`)
     const txHash = await this.sendTrxForFeeOrActiveAccount(receiverAddress, fromAddressPrivateKey, 'active')
     if (!txHash) {
@@ -187,7 +187,7 @@ export class SplitWithdrawUseCase {
    * @returns txHash if the TRX was sent successfully, false otherwise
    */
   private async sendTrxForFeeOrActiveAccount(toAddress: string, privateKey: string, type: 'fee' | 'active') {
-    const amount = type === 'fee' ? 0.5 : 0.1
+    const amount = 0.5
     const txHash = await this.blockchainTransactionService.sendFunds({
       currency: Currency.TRX,
       toAddress,
