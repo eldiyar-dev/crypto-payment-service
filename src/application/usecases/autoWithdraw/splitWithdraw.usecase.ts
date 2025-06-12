@@ -117,7 +117,7 @@ export class SplitWithdrawUseCase {
       }
 
       // Send 0.5 TRX for fee if account resource/trx insufficient error
-      const isSendFeeSuccess = await this.sendTrxForFeeOrActiveAccount(fromAddress, mainPrivateKey, 'fee')
+      const isSendFeeSuccess = await this.sendTrxForFeeOrActiveAccount(fromAddress, mainPrivateKey, 0.5, 'fee')
       if (!isSendFeeSuccess) return reportLog()
 
       const txHash2 = await withdrawAccount()
@@ -141,10 +141,10 @@ export class SplitWithdrawUseCase {
     const orderId = await this.tronEnergyService.buyResourceUsingApiKey({ buyAmount: energyAmount, receiverAddress })
     if (orderId) return orderId
 
-    // send 0.5 TRX for active account
-    const amountTRX = 0.5
+    // send 0.4 TRX for active account
+    const amountTRX = 0.4
     this.logger.log(`Sending ${amountTRX} TRX for active account to ${receiverAddress}`)
-    const txHash = await this.sendTrxForFeeOrActiveAccount(receiverAddress, fromAddressPrivateKey, 'active')
+    const txHash = await this.sendTrxForFeeOrActiveAccount(receiverAddress, fromAddressPrivateKey, amountTRX, 'active')
     if (!txHash) {
       void this.reportService.sendReport({
         currency: Currency.USDT,
@@ -183,11 +183,11 @@ export class SplitWithdrawUseCase {
    * Send TRX for fee/active account
    * @param toAddress - Address to send the TRX to
    * @param privateKey - Private key of the wallet to send the TRX from
-   * @param type - Type of TRX to send (fee/active)
+   * @param amount - Amount of TRX to send default 0.1
+   * @param type - Type of TRX to send (fee/active) default fee
    * @returns txHash if the TRX was sent successfully, false otherwise
    */
-  private async sendTrxForFeeOrActiveAccount(toAddress: string, privateKey: string, type: 'fee' | 'active') {
-    const amount = 0.5
+  private async sendTrxForFeeOrActiveAccount(toAddress: string, privateKey: string, amount = 0.1, type: 'fee' | 'active' = 'fee') {
     const txHash = await this.blockchainTransactionService.sendFunds({
       currency: Currency.TRX,
       toAddress,
