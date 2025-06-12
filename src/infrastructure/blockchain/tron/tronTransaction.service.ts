@@ -49,10 +49,10 @@ export class TronTransactionService {
       tronWeb.setPrivateKey(privateKey)
 
       // Convert amount to SUN (1 TRX = 1,000,000 SUN)
-      let amountInSun = tronWeb.toBigNumber(amount).multipliedBy(1_000_000)
+      let amountInSun = tronWeb.toBigNumber(amount).multipliedBy(1_000_000).integerValue(tronWeb.BigNumber.ROUND_FLOOR)
 
       // Calculate the fee
-      const feeInSun = tronWeb.toBigNumber(this.TRX_FEE).multipliedBy(1_000_000) // 0.5 TRX fee
+      const feeInSun = tronWeb.toBigNumber(this.TRX_FEE).multipliedBy(1_000_000).integerValue(tronWeb.BigNumber.ROUND_FLOOR) // 0.5 TRX fee
       amountInSun = amountInSun.minus(feeInSun)
 
       // Create transaction
@@ -94,7 +94,10 @@ export class TronTransactionService {
       const contract = await tronWeb.contract().at(contractAddress)
 
       // Convert amount to correct format (considering token decimals)
-      const amountInWei = tronWeb.toBigNumber(amount).multipliedBy(10 ** 6)
+      const amountInWei = tronWeb
+        .toBigNumber(amount)
+        .multipliedBy(10 ** 6)
+        .integerValue(tronWeb.BigNumber.ROUND_FLOOR)
 
       // Create transaction
       const txHash = (await contract.transfer(toAddress, amountInWei.toString()).send({ feeLimit: 100000000, callValue: 0 })) satisfies string

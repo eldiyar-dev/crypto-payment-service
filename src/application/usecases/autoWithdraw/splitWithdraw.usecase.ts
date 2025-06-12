@@ -71,7 +71,7 @@ export class SplitWithdrawUseCase {
 
       // Withdraw to additionalAddress
       if (additionalAmount) {
-        void this.withdrawAccount({
+        await this.withdrawAccount({
           fromAddress: address,
           fromAddressPrivateKey: wallet.privateKey,
           toAddress: additionalAddress,
@@ -84,7 +84,7 @@ export class SplitWithdrawUseCase {
 
       // Withdraw to mainAddress
       if (mainAmount) {
-        void this.withdrawAccount({
+        await this.withdrawAccount({
           fromAddress: address,
           fromAddressPrivateKey: wallet.privateKey,
           toAddress: mainAddress,
