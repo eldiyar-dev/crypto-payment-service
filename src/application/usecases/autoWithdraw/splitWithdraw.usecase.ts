@@ -37,7 +37,7 @@ export class SplitWithdrawUseCase {
   async execute({ currency, address, amount, chain }: TWithdrawParams) {
     try {
       // Get withdrawal wallets and pie
-      const withdrawData = await this.withdrawService.getWithdrawWallets(currency, address)
+      const withdrawData = await this.withdrawService.getWithdrawWallets(chain, currency, address)
       if (!withdrawData) {
         this.logger.error(`Failed to get withdrawal wallets for ${address}`)
         void this.reportService.sendReport({ currency, address, amount, message: `Failed to get withdrawal wallets for ${address}` })
@@ -107,24 +107,29 @@ export class SplitWithdrawUseCase {
       return false
     }
 
+    const success = () => {
+      this.logger.log(`Withdraw completed from ${fromAddress} to ${toAddress} ${amount} ${currency}`)
+      return true
+    }
+
     try {
       const withdrawAccount = () => this.blockchainTransactionService.sendFunds({ currency, toAddress, amount, privateKey: fromAddressPrivateKey, chain })
 
       const txHash = await withdrawAccount()
-      if (txHash) {
-        this.logger.log(`Withdraw completed from ${fromAddress} to ${toAddress} ${amount} ${currency} txHash: ${txHash}`)
-        return true
+      if (txHash) return success()
+
+      if (chain === Chain.TRON) {
+        // Send 0.5 TRX for fee if account resource/trx insufficient error
+        const isSendFeeSuccess = await this.sendTrxForFeeOrActiveAccount(fromAddress, mainPrivateKey, 0.5, 'fee')
+        if (!isSendFeeSuccess) return reportLog()
+
+        const txHash2 = await withdrawAccount()
+        if (!txHash2) return reportLog()
+
+        return success()
       }
 
-      // Send 0.5 TRX for fee if account resource/trx insufficient error
-      const isSendFeeSuccess = await this.sendTrxForFeeOrActiveAccount(fromAddress, mainPrivateKey, 0.5, 'fee')
-      if (!isSendFeeSuccess) return reportLog()
-
-      const txHash2 = await withdrawAccount()
-      if (!txHash2) return reportLog()
-
-      this.logger.log(`Withdraw completed from ${fromAddress} to ${toAddress} ${amount} ${currency} txHash: ${txHash2}`)
-      return true
+      return reportLog()
     } catch {
       return reportLog()
     }
