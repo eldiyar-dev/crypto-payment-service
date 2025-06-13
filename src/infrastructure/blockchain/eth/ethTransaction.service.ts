@@ -58,7 +58,8 @@ export class EthTransactionService {
       const fromAddress = wallet.address
 
       // convert amount to wei
-      let amountWei = ethers.parseEther(amount.toString())
+      const roundedAmount = Number(amount).toFixed(18) // ensures at most 18 decimals
+      let amountWei = ethers.parseEther(roundedAmount)
 
       // get current gas parameters
       const feeData = await this.provider.getFeeData()
