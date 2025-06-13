@@ -62,8 +62,8 @@ export class EthTransactionService {
       const fromAddress = wallet.address
 
       // convert amount to wei
-      const roundedAmount = Number(amount).toFixed(18) // ensures at most 18 decimals
-      let amountWei = ethers.parseEther(roundedAmount)
+      const roundedAmount = +Number(amount).toFixed(18) // ensures at most 18 decimals
+      let amountWei = ethers.parseEther(roundedAmount.toString())
 
       // get current gas parameters
       const feeData = await this.provider.getFeeData()
@@ -125,7 +125,8 @@ export class EthTransactionService {
       const contract = new ethers.Contract(contractAddress, this.USDT_ABI, wallet)
 
       // Convert amount to wei (assuming decimals)
-      const amountInWei = ethers.parseUnits(amount.toString(), decimals)
+      const roundedAmount = +Number(amount).toFixed(decimals)
+      const amountInWei = ethers.parseUnits(roundedAmount.toString(), decimals)
 
       const gasLimit = await contract.transfer.estimateGas(toAddress, amountInWei)
 
@@ -135,7 +136,7 @@ export class EthTransactionService {
       const gasPrice = maxFeePerGas ?? maxPriorityFeePerGas ?? 0n
       const totalFee = gasPrice * gasLimit
 
-      this.logger.log(`Sending ${ethers.formatEther(amountInWei)} USDT to ${toAddress}`)
+      this.logger.log(`Sending ${ethers.formatUnits(amountInWei, decimals)} USDT to ${toAddress}`)
       this.logger.log(`Fee: ${ethers.formatEther(totalFee)}`)
 
       const txNonce = nonce ?? (await this.provider.getTransactionCount(fromAddress, 'latest'))
@@ -143,7 +144,6 @@ export class EthTransactionService {
       // Send transaction
       const tx = await contract.transfer(toAddress, amountInWei, {
         gasLimit,
-        gasPrice,
         maxFeePerGas,
         maxPriorityFeePerGas,
         nonce: txNonce,
