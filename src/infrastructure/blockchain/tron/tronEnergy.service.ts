@@ -85,12 +85,7 @@ export class TronEnergyService {
     // Resource type to buy (ENERGY or BANDWIDTH)
     this.RESOURCE_TYPE = 'ENERGY'
 
-    this.tronWeb = new TronWeb({
-      fullNode: this.TRON_FULL_NODE,
-      solidityNode: this.TRON_FULL_NODE,
-      eventServer: this.TRON_FULL_NODE,
-      headers: { 'TRON-PRO-API-KEY': this.configService.get('tron_pro_api_key')! },
-    })
+    this.tronWeb = new TronWeb({ fullHost: this.TRON_FULL_NODE })
   }
 
   /**
