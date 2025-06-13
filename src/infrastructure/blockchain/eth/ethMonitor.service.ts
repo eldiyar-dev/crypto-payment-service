@@ -62,7 +62,6 @@ export class EthMonitorService {
 
   private async checkBlockForDeposits(blockNumber: number) {
     const block = await this.getBlockWithRetry(blockNumber)
-    this.logger.log(`Block ${blockNumber} received`, block)
     if (!block) return
 
     for (const txHash of block.transactions) {

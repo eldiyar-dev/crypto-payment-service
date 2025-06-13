@@ -3,6 +3,7 @@ import { AESCipherService } from '@/common/services/aes.service'
 import { generateUniqueAmount, sleep, splitAmountByPercentage } from '@/common/utils'
 import { Wallet } from '@/domain/entities/wallet.entity'
 import { WalletRepository } from '@/domain/repositories/walletRepository'
+import { EthInfoService } from '@/infrastructure/blockchain/eth/ethInfo.service'
 import { BlockchainTransactionService } from '@/infrastructure/blockchain/transaction'
 import { TronEnergyService, TronInfoService } from '@/infrastructure/blockchain/tron'
 import { ReportService } from '@/infrastructure/clientApi/report.service'
@@ -11,7 +12,16 @@ import { Injectable, Logger } from '@nestjs/common'
 
 type TWithdrawParams = { currency: Currency; address: Wallet['address']; amount: number; chain: Chain }
 
-type TWithdrawAccountParams = { fromAddress: string; fromAddressPrivateKey: string; toAddress: string; mainPrivateKey: string; amount: number; currency: Currency; chain: Chain }
+type TWithdrawAccountParams = {
+  fromAddress: string
+  fromAddressPrivateKey: string
+  toAddress: string
+  mainPrivateKey: string
+  amount: number
+  currency: Currency
+  chain: Chain
+  nonce?: number
+}
 
 @Injectable()
 export class SplitWithdrawUseCase {
@@ -25,6 +35,7 @@ export class SplitWithdrawUseCase {
     private readonly reportService: ReportService,
     private readonly tronEnergyService: TronEnergyService,
     private readonly tronInfoService: TronInfoService,
+    private readonly ethInfoService: EthInfoService,
   ) {}
 
   /**
@@ -69,6 +80,8 @@ export class SplitWithdrawUseCase {
         return
       }
 
+      const nonce = chain === Chain.ETH ? await this.ethInfoService.getNonce(address) : 0
+
       // Withdraw to additionalAddress
       if (additionalAmount) {
         await this.withdrawAccount({
@@ -79,6 +92,7 @@ export class SplitWithdrawUseCase {
           amount: additionalAmount,
           currency,
           chain,
+          nonce,
         })
       }
 
@@ -92,6 +106,7 @@ export class SplitWithdrawUseCase {
           amount: mainAmount,
           currency,
           chain,
+          nonce: nonce + 1,
         })
       }
     } catch (error) {
@@ -100,7 +115,7 @@ export class SplitWithdrawUseCase {
     }
   }
 
-  private async withdrawAccount({ fromAddress, toAddress, amount, fromAddressPrivateKey, mainPrivateKey, currency, chain }: TWithdrawAccountParams) {
+  private async withdrawAccount({ fromAddress, toAddress, amount, fromAddressPrivateKey, mainPrivateKey, currency, chain, nonce }: TWithdrawAccountParams) {
     const reportLog = () => {
       void this.reportService.sendReport({ currency, address: fromAddress, amount, message: 'Withdrawal failed' })
       this.logger.error(`Withdrawal failed from ${fromAddress} to ${toAddress} ${amount} ${currency}`)
@@ -113,7 +128,7 @@ export class SplitWithdrawUseCase {
     }
 
     try {
-      const withdrawAccount = () => this.blockchainTransactionService.sendFunds({ currency, toAddress, amount, privateKey: fromAddressPrivateKey, chain })
+      const withdrawAccount = () => this.blockchainTransactionService.sendFunds({ currency, toAddress, amount, privateKey: fromAddressPrivateKey, chain, nonce })
 
       const txHash = await withdrawAccount()
       if (txHash) return success()

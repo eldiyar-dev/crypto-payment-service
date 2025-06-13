@@ -7,6 +7,7 @@ type SendETHParams = {
   toAddress: string
   amount: number
   privateKey: string
+  nonce?: number
 }
 
 type SendERC20TokenParams = {
@@ -15,16 +16,19 @@ type SendERC20TokenParams = {
   privateKey: string
   contractAddress: string
   decimals: number
+  nonce?: number
 }
 
 type SendAllETHParams = {
   privateKey: string
   toAddress: string
+  nonce?: number
 }
 
 type SendAllUSDTParams = {
   privateKey: string
   toAddress: string
+  nonce?: number
 }
 
 @Injectable()
@@ -52,7 +56,7 @@ export class EthTransactionService {
    * @returns {Promise<string | null>} The transaction hash if successful, null if failed
    * @throws {Error} If there are insufficient funds for transfer and gas
    */
-  async sendETH({ toAddress, amount, privateKey }: SendETHParams): Promise<string | null> {
+  async sendETH({ toAddress, amount, privateKey, nonce }: SendETHParams): Promise<string | null> {
     try {
       const wallet = new ethers.Wallet(privateKey, this.provider)
       const fromAddress = wallet.address
@@ -80,6 +84,8 @@ export class EthTransactionService {
       this.logger.log(`Sending ${ethers.formatEther(amountWei)} ETH to ${toAddress}`)
       this.logger.log(`Fee: ${ethers.formatEther(totalGasCost)}`)
 
+      const txNonce = nonce ?? (await this.provider.getTransactionCount(fromAddress, 'latest'))
+
       // send transaction
       const txResponse = await wallet.sendTransaction({
         to: toAddress,
@@ -87,6 +93,7 @@ export class EthTransactionService {
         maxFeePerGas,
         maxPriorityFeePerGas,
         gasLimit: gasLimit,
+        nonce: txNonce,
       })
 
       // wait for confirmation
@@ -110,9 +117,10 @@ export class EthTransactionService {
    * @param {number} params.decimals - The number of decimals of the ERC20 token
    * @returns {Promise<string | null>} The transaction hash if successful, null if failed
    */
-  async sendERC20Token({ toAddress, amount, privateKey, contractAddress, decimals }: SendERC20TokenParams): Promise<string | null> {
+  async sendERC20Token({ toAddress, amount, privateKey, contractAddress, decimals, nonce }: SendERC20TokenParams): Promise<string | null> {
     try {
       const wallet = new ethers.Wallet(privateKey, this.provider)
+      const fromAddress = wallet.address
 
       const contract = new ethers.Contract(contractAddress, this.USDT_ABI, wallet)
 
@@ -130,12 +138,15 @@ export class EthTransactionService {
       this.logger.log(`Sending ${ethers.formatEther(amountInWei)} USDT to ${toAddress}`)
       this.logger.log(`Fee: ${ethers.formatEther(totalFee)}`)
 
+      const txNonce = nonce ?? (await this.provider.getTransactionCount(fromAddress, 'latest'))
+
       // Send transaction
       const tx = await contract.transfer(toAddress, amountInWei, {
         gasLimit,
         gasPrice,
         maxFeePerGas,
         maxPriorityFeePerGas,
+        nonce: txNonce,
       })
       const receipt = await tx.wait()
       this.logger.log(`Transaction send ERC20 to ${toAddress} receipt:`, receipt)
@@ -157,9 +168,10 @@ export class EthTransactionService {
   async sendAllETH({ privateKey, toAddress }: SendAllETHParams): Promise<string | null> {
     try {
       const wallet = new ethers.Wallet(privateKey, this.provider)
+      const fromAddress = wallet.address
 
       // get balance
-      const balance = await this.provider.getBalance(wallet.address)
+      const balance = await this.provider.getBalance(fromAddress)
 
       // estimate fee
       const gasLimit = 21000
@@ -182,12 +194,15 @@ export class EthTransactionService {
       this.logger.log(`Sending ${ethers.formatEther(amountToSend)} ETH to ${toAddress}`)
       this.logger.log(`Fee: ${ethers.formatEther(totalFee)}`)
 
+      const nonce = await this.provider.getTransactionCount(fromAddress, 'latest')
+
       const tx = await wallet.sendTransaction({
         to: toAddress,
         value: amountToSend,
         gasLimit,
         maxFeePerGas: gasPrice,
         maxPriorityFeePerGas,
+        nonce,
       })
 
       const receipt = await tx.wait()
@@ -211,9 +226,10 @@ export class EthTransactionService {
     try {
       const wallet = new ethers.Wallet(privateKey, this.provider)
       const contract = new ethers.Contract(this.usdtContractAddress, this.USDT_ABI, wallet)
+      const fromAddress = wallet.address
 
       // Get USDT balance
-      const usdtBalance = (await contract.balanceOf(wallet.address)) as bigint
+      const usdtBalance = (await contract.balanceOf(fromAddress)) as bigint
       if (usdtBalance === 0n) {
         this.logger.error(`No USDT to send address: ${toAddress} balance: ${usdtBalance}`)
         return null
@@ -229,7 +245,7 @@ export class EthTransactionService {
       const totalFee = gasPrice * gasLimit
 
       // Check if there is enough ETH on the wallet to pay for the fee
-      const ethBalance = await this.provider.getBalance(wallet.address)
+      const ethBalance = await this.provider.getBalance(fromAddress)
       if (ethBalance < totalFee) {
         this.logger.error(`Not enough ETH to pay for gas address: ${toAddress} balance: ${ethBalance} fee: ${totalFee}`)
         return null
@@ -238,12 +254,15 @@ export class EthTransactionService {
       this.logger.log(`Sending ${ethers.formatEther(usdtBalance)} USDT to ${toAddress}`)
       this.logger.log(`Fee: ${ethers.formatEther(totalFee)}`)
 
+      const nonce = await this.provider.getTransactionCount(fromAddress, 'latest')
+
       // Send all USDT
       const tx = await contract.transfer(toAddress, usdtBalance, {
         gasLimit,
         gasPrice,
         maxFeePerGas,
         maxPriorityFeePerGas,
+        nonce,
       })
       const receipt = await tx.wait()
       this.logger.log(`Transaction send all USDT to ${toAddress} receipt:`, receipt)

@@ -12,6 +12,7 @@ type TSendFunds = {
   amount: number
   privateKey: string
   chain: Chain
+  nonce?: number
 }
 
 @Injectable()
@@ -31,17 +32,17 @@ export class BlockchainTransactionService {
     return this.configService.get('eth_usdt_contract_address')!
   }
 
-  sendFunds({ currency, toAddress, amount, privateKey, chain }: TSendFunds) {
+  sendFunds({ currency, toAddress, amount, privateKey, chain, nonce }: TSendFunds) {
     switch (currency) {
       case Currency.TRX:
         return this.tronTransactionService.sendTRX({ toAddress, amount, privateKey })
 
       case Currency.USDT:
         if (chain === Chain.TRON) return this.tronTransactionService.sendTRC20Token({ toAddress, amount, privateKey, contractAddress: this.tronUsdtContractAddress })
-        else return this.ethTransactionService.sendERC20Token({ toAddress, amount, privateKey, contractAddress: this.ethUsdtContractAddress, decimals: 6 })
+        else return this.ethTransactionService.sendERC20Token({ toAddress, amount, privateKey, contractAddress: this.ethUsdtContractAddress, decimals: 6, nonce })
 
       case Currency.ETH:
-        return this.ethTransactionService.sendETH({ privateKey, toAddress, amount })
+        return this.ethTransactionService.sendETH({ privateKey, toAddress, amount, nonce })
 
       // case Currency.BTC:
       //   return this.btcTransactionService.sendBTC({ fromAddress, toAddress, amount, privateKey })
