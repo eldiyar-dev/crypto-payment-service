@@ -3,7 +3,7 @@ import { withRetry } from '@/common/utils'
 import { RedisService } from '@/infrastructure/redis/redis.service'
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { ethers } from 'ethers'
+import { ContractEventPayload, ethers } from 'ethers'
 import { TConfiguration } from '../../config/configuration'
 
 type DepositCallback = (data: { address: string; amount: number; currency: Currency; txHash: string }) => void
@@ -29,7 +29,8 @@ export class EthMonitorService {
   }
 
   async getAddresses(): Promise<string[]> {
-    return this.redisService.getAddresses(Chain.ETH)
+    const addresses = await this.redisService.getAddresses(Chain.ETH)
+    return addresses.map((address) => address.toLowerCase())
   }
 
   private provider: ethers.WebSocketProvider
@@ -61,6 +62,7 @@ export class EthMonitorService {
 
   private async checkBlockForDeposits(blockNumber: number) {
     const block = await this.getBlockWithRetry(blockNumber)
+    this.logger.log(`Block ${blockNumber} received`, block)
     if (!block) return
 
     for (const txHash of block.transactions) {
@@ -91,12 +93,10 @@ export class EthMonitorService {
   }
 
   private async listenUsdtTransfers() {
-    // Create USDT contract
     this.usdtContract = new ethers.Contract(this.configService.get('eth_usdt_contract_address')!, this.ERC20_ABI, this.provider)
 
-    await this.usdtContract.on('Transfer', async (from: string, to: string, value: ethers.BigNumberish, event) => {
+    await this.usdtContract.on('Transfer', async (from: string, to: string, value: ethers.BigNumberish, event: ContractEventPayload) => {
       try {
-        this.logger.log('Transfer event received', from, to, value)
         const toLower = to.toLowerCase()
         if (!(await this.getAddresses()).includes(toLower)) return
 
