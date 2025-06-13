@@ -16,14 +16,24 @@ export class StoreWalletUseCase {
   ) {}
 
   addWallets(wallets: Wallet[]) {
-    wallets.forEach((wallet) => {
-      if (wallet.chain === Chain.ETH) this.ethMonitorService.addAddress(wallet.address)
-
-      if (wallet.chain === Chain.BTC) this.btcMonitorService.addAddress(wallet.address)
-
-      if (wallet.chain === Chain.TRON) this.tronMonitorService.addAddress(wallet.address)
+    const lowerCaseWallets = wallets.map((wallet) => {
+      if (wallet.chain === Chain.ETH || wallet.chain === Chain.BTC) {
+        return {
+          ...wallet,
+          address: wallet.address.toLowerCase(),
+        }
+      }
+      return wallet
     })
 
-    return this.walletRepository.createEntities(wallets)
+    lowerCaseWallets.forEach((wallet) => {
+      if (wallet.chain === Chain.ETH) void this.ethMonitorService.addAddress(wallet.address)
+
+      if (wallet.chain === Chain.BTC) void this.btcMonitorService.addAddress(wallet.address)
+
+      if (wallet.chain === Chain.TRON) void this.tronMonitorService.addAddress(wallet.address)
+    })
+
+    return this.walletRepository.createEntities(lowerCaseWallets)
   }
 }
