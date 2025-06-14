@@ -145,7 +145,7 @@ export class SplitWithdrawUseCase {
       }
 
       if (chain === Chain.ETH) {
-        const txHash = await this.calculateAndSendEthForFee(fromAddress, mainPrivateKey, amount, nonce! + 1)
+        const txHash = await this.calculateAndSendEthForFee(fromAddress, mainPrivateKey, amount)
         if (!txHash) return reportLog()
 
         const txHash2 = await withdrawAccount()
@@ -243,7 +243,7 @@ export class SplitWithdrawUseCase {
    * @param amountUSDT - Amount of USDT to send
    * @returns txHash if the ETH was sent successfully, false otherwise
    */
-  private async calculateAndSendEthForFee(toAddress: string, privateKey: string, amountUSDT: number, nonce?: number) {
+  private async calculateAndSendEthForFee(toAddress: string, privateKey: string, amountUSDT: number) {
     const gasPriceInEth = await this.ethInfoService.getGasPriceInEth(privateKey, toAddress, amountUSDT)
     if (!gasPriceInEth) return false
 
@@ -254,7 +254,6 @@ export class SplitWithdrawUseCase {
       amount: gasPriceInEth + 0.0001,
       privateKey,
       chain: Chain.ETH,
-      nonce,
     })
     if (!txHash) {
       this.logger.error(`Failed to send ${gasPriceInEth} ETH for fee to ${toAddress}`)
