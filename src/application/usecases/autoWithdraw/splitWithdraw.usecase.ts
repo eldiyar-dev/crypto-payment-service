@@ -248,11 +248,10 @@ export class SplitWithdrawUseCase {
     if (!gasPriceInEth) return false
 
     this.logger.log(`Gas price in ETH for fee: ${gasPriceInEth}`)
-
     const txHash = await this.blockchainTransactionService.sendFunds({
       currency: Currency.ETH,
       toAddress,
-      amount: gasPriceInEth,
+      amount: gasPriceInEth + 0.0001,
       privateKey,
       chain: Chain.ETH,
     })
