@@ -70,22 +70,28 @@ export class EthInfoService {
    * @param amount - The amount to send
    * @returns The gas price in ETH as a number
    */
-  async getGasPriceInEth(privateKey: string, toAddress: string, amount: number): Promise<number> {
-    const wallet = new ethers.Wallet(privateKey, this.provider)
+  async getGasPriceInEth(privateKey: string, toAddress: string, amount: number): Promise<number | null> {
+    try {
+      const wallet = new ethers.Wallet(privateKey, this.provider)
 
-    const contract = new ethers.Contract(this.usdtContractAddress, this.USDT_ABI, wallet)
+      const contract = new ethers.Contract(this.usdtContractAddress, this.USDT_ABI, wallet)
 
-    const amountInWei = ethers.parseUnits(amount.toString(), 6)
+      const roundedAmount = +Number(amount).toFixed(6)
+      const amountInWei = ethers.parseUnits(roundedAmount.toString(), 6)
 
-    const gasLimit = await contract.transfer.estimateGas(toAddress, amountInWei)
+      const gasLimit = await contract.transfer.estimateGas(toAddress, amountInWei)
 
-    const { maxFeePerGas, maxPriorityFeePerGas } = await this.provider.getFeeData()
+      const { maxFeePerGas, maxPriorityFeePerGas } = await this.provider.getFeeData()
 
-    const gasPrice = maxFeePerGas ?? maxPriorityFeePerGas ?? 0n
-    const totalFee = gasPrice * gasLimit
+      const gasPrice = maxFeePerGas ?? maxPriorityFeePerGas ?? 0n
+      const totalFee = gasPrice * gasLimit
 
-    const totalFeeEth = ethers.formatEther(totalFee)
+      const totalFeeEth = ethers.formatEther(totalFee)
 
-    return +totalFeeEth
+      return +totalFeeEth
+    } catch (error) {
+      this.logger.error(`Failed to get gas price in ETH for address ${toAddress} and amount ${amount}: ${error.message}`)
+      return null
+    }
   }
 }

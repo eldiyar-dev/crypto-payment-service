@@ -145,7 +145,7 @@ export class SplitWithdrawUseCase {
       }
 
       if (chain === Chain.ETH) {
-        const txHash = await this.calculateAndSendEthForFee(toAddress, mainPrivateKey, amount)
+        const txHash = await this.calculateAndSendEthForFee(fromAddress, mainPrivateKey, amount)
         if (!txHash) return reportLog()
 
         const txHash2 = await withdrawAccount()
@@ -246,6 +246,8 @@ export class SplitWithdrawUseCase {
   private async calculateAndSendEthForFee(toAddress: string, privateKey: string, amountUSDT: number) {
     const gasPriceInEth = await this.ethInfoService.getGasPriceInEth(privateKey, toAddress, amountUSDT)
     if (!gasPriceInEth) return false
+
+    this.logger.log(`Gas price in ETH for fee: ${gasPriceInEth}`)
 
     const txHash = await this.blockchainTransactionService.sendFunds({
       currency: Currency.ETH,

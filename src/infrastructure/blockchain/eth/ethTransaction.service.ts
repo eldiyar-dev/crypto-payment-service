@@ -141,7 +141,7 @@ export class EthTransactionService {
 
       const ethBalance = await this.provider.getBalance(fromAddress)
       if (ethBalance < totalFee) {
-        this.logger.error(`Not enough ETH to pay for gas. Address: ${fromAddress}, ETH balance: ${ethBalance}, required: ${totalFee}`)
+        this.logger.error(`Not enough ETH to pay for gas. Address: ${fromAddress}, ETH balance: ${ethBalance}, required: ${ethers.formatEther(totalFee)}`)
         return null
       }
 
