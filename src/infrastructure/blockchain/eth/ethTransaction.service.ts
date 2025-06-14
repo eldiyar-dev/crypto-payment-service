@@ -84,8 +84,6 @@ export class EthTransactionService {
       this.logger.log(`Sending ${ethers.formatEther(amountWei)} ETH to ${toAddress}`)
       this.logger.log(`Fee: ${ethers.formatEther(totalGasCost)}`)
 
-      const txNonce = nonce ?? (await this.provider.getTransactionCount(fromAddress, 'latest'))
-
       // send transaction
       const txResponse = await wallet.sendTransaction({
         to: toAddress,
@@ -93,7 +91,7 @@ export class EthTransactionService {
         maxFeePerGas,
         maxPriorityFeePerGas,
         gasLimit: gasLimit,
-        nonce: txNonce,
+        nonce,
       })
 
       // wait for confirmation
@@ -145,14 +143,12 @@ export class EthTransactionService {
         return null
       }
 
-      const txNonce = nonce ?? (await this.provider.getTransactionCount(fromAddress, 'latest'))
-
       // Send transaction
       const tx = await contract.transfer(toAddress, amountInWei, {
         gasLimit,
         maxFeePerGas,
         maxPriorityFeePerGas,
-        nonce: txNonce,
+        nonce,
       })
       const receipt = await tx.wait()
       this.logger.log(`Transaction send ERC20 to ${toAddress} receipt:`, receipt)
