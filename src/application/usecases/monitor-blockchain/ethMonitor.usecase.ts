@@ -10,6 +10,25 @@ import { SplitWithdrawUseCase } from '../autoWithdraw/splitWithdraw.usecase'
 export class EthMonitorUseCase implements OnModuleInit {
   private readonly logger = new Logger(EthMonitorUseCase.name)
 
+  private readonly depositQueue: Array<() => Promise<void>> = []
+  private isProcessingQueue = false
+
+  private async processQueue() {
+    if (this.isProcessingQueue) return
+    this.isProcessingQueue = true
+    while (this.depositQueue.length > 0) {
+      const task = this.depositQueue.shift()
+      if (task) {
+        try {
+          await task()
+        } catch (err) {
+          this.logger.error('Error processing deposit queue task', err)
+        }
+      }
+    }
+    this.isProcessingQueue = false
+  }
+
   constructor(
     private readonly ethMonitorService: EthMonitorService,
     private readonly depositService: DepositService,
@@ -34,10 +53,12 @@ export class EthMonitorUseCase implements OnModuleInit {
     this.logger.log('Starting ETH monitoring...')
 
     this.ethMonitorService.onDeposit(({ address, amount, currency, txHash }) => {
-      this.logger.log(`New ETH deposit: ${address} ${amount} ${currency} txHash: ${txHash}`)
-      void this.depositService.notifyNewDeposit({ currency, address, amount, txHash })
-
-      void this.splitWithdrawUseCase.execute({ currency, address, amount, chain: Chain.ETH })
+      this.depositQueue.push(async () => {
+        this.logger.log(`New ETH deposit: ${address} ${amount} ${currency} txHash: ${txHash}`)
+        await this.depositService.notifyNewDeposit({ currency, address, amount, txHash })
+        await this.splitWithdrawUseCase.execute({ currency, address, amount, chain: Chain.ETH })
+      })
+      void this.processQueue()
     })
   }
 }

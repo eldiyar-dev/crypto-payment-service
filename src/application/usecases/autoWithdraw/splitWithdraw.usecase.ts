@@ -80,8 +80,6 @@ export class SplitWithdrawUseCase {
         return
       }
 
-      const nonce = chain === Chain.ETH ? await this.ethInfoService.getNonce(address) : 0
-
       // Withdraw to additionalAddress
       if (additionalAmount) {
         await this.withdrawAccount({
@@ -92,7 +90,6 @@ export class SplitWithdrawUseCase {
           amount: additionalAmount,
           currency,
           chain,
-          nonce,
         })
       }
 
@@ -106,7 +103,6 @@ export class SplitWithdrawUseCase {
           amount: mainAmount,
           currency,
           chain,
-          nonce: nonce + 1,
         })
       }
     } catch (error) {
