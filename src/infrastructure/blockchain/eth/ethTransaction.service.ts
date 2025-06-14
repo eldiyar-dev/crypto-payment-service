@@ -139,6 +139,12 @@ export class EthTransactionService {
       this.logger.log(`Sending ${ethers.formatUnits(amountInWei, decimals)} USDT to ${toAddress}`)
       this.logger.log(`Fee: ${ethers.formatEther(totalFee)}`)
 
+      const ethBalance = await this.provider.getBalance(fromAddress)
+      if (ethBalance < totalFee) {
+        this.logger.error(`Not enough ETH to pay for gas. Address: ${fromAddress}, ETH balance: ${ethBalance}, required: ${totalFee}`)
+        return null
+      }
+
       const txNonce = nonce ?? (await this.provider.getTransactionCount(fromAddress, 'latest'))
 
       // Send transaction

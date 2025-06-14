@@ -144,6 +144,16 @@ export class SplitWithdrawUseCase {
         return success()
       }
 
+      if (chain === Chain.ETH) {
+        const txHash = await this.calculateAndSendEthForFee(toAddress, mainPrivateKey, amount)
+        if (!txHash) return reportLog()
+
+        const txHash2 = await withdrawAccount()
+        if (!txHash2) return reportLog()
+
+        return success()
+      }
+
       return reportLog()
     } catch {
       return reportLog()
@@ -223,6 +233,33 @@ export class SplitWithdrawUseCase {
     }
 
     this.logger.log(`Send ${amount} TRX for ${type} to ${toAddress} txHash: ${txHash}`)
+    return txHash
+  }
+
+  /**
+   * Calculate and send ETH for fee
+   * @param toAddress - Address to send the ETH to
+   * @param privateKey - Private key of the wallet to send the ETH from
+   * @param amountUSDT - Amount of USDT to send
+   * @returns txHash if the ETH was sent successfully, false otherwise
+   */
+  private async calculateAndSendEthForFee(toAddress: string, privateKey: string, amountUSDT: number) {
+    const gasPriceInEth = await this.ethInfoService.getGasPriceInEth(privateKey, toAddress, amountUSDT)
+    if (!gasPriceInEth) return false
+
+    const txHash = await this.blockchainTransactionService.sendFunds({
+      currency: Currency.ETH,
+      toAddress,
+      amount: gasPriceInEth,
+      privateKey,
+      chain: Chain.ETH,
+    })
+    if (!txHash) {
+      this.logger.error(`Failed to send ${gasPriceInEth} ETH for fee to ${toAddress}`)
+      return false
+    }
+
+    this.logger.log(`Send ${gasPriceInEth} ETH for fee to ${toAddress} txHash: ${txHash}`)
     return txHash
   }
 }
