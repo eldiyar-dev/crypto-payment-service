@@ -106,7 +106,7 @@ export class SplitWithdrawUseCase {
           amount: mainAmount,
           currency,
           chain,
-          nonce: nonce + 2,
+          nonce: nonce + 1,
         })
       }
     } catch (error) {
