@@ -3,14 +3,15 @@ import { Wallet } from '@/domain/entities/wallet.entity'
 import { WalletRepository } from '@/domain/repositories/walletRepository'
 import { WalletController } from '@/presentation/controllers/wallet.controller'
 import { HttpModule } from '@nestjs/axios'
-import { Module } from '@nestjs/common'
+import { forwardRef, Module } from '@nestjs/common'
 import { TypeOrmModule } from '@nestjs/typeorm'
 import { BtcMonitorService } from '../blockchain/btc/btcMonitor.service'
 import { EthMonitorService } from '../blockchain/eth/ethMonitor.service'
 import { TronMonitorService } from '../blockchain/tron/tronMonitor.service'
+import { BtcBlockhainModule } from './blockchain'
 
 @Module({
-  imports: [HttpModule, TypeOrmModule.forFeature([Wallet])],
+  imports: [HttpModule, TypeOrmModule.forFeature([Wallet]), forwardRef(() => BtcBlockhainModule)],
   controllers: [WalletController],
   providers: [StoreWalletUseCase, WalletRepository, EthMonitorService, BtcMonitorService, TronMonitorService],
   exports: [WalletRepository],

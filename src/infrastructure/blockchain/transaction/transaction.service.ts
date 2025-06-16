@@ -44,8 +44,8 @@ export class BlockchainTransactionService {
       case Currency.ETH:
         return this.ethTransactionService.sendETH({ privateKey, toAddress, amount, nonce })
 
-      // case Currency.BTC:
-      //   return this.btcTransactionService.sendBTC({ fromAddress, toAddress, amount, privateKey })
+      case Currency.BTC:
+        return this.btcTransactionService.sendBTC({ toAddress, amount, privateKey })
     }
   }
 }

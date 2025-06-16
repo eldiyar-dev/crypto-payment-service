@@ -23,7 +23,7 @@ export class TronMonitorUseCase implements OnModuleInit {
 
     this.execute()
 
-    await this.tronMonitorService.start()
+    // await this.tronMonitorService.start()
   }
 
   async getDBWallets(): Promise<Wallet['address'][]> {

@@ -4,6 +4,7 @@ import { WalletRepository } from '@/domain/repositories/walletRepository'
 import { BtcMonitorService } from '@/infrastructure/blockchain/btc/btcMonitor.service'
 import { DepositService } from '@/infrastructure/clientApi/deposit.service'
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
+import { SplitWithdrawUseCase } from '../autoWithdraw/splitWithdraw.usecase'
 
 @Injectable()
 export class BtcMonitorUseCase implements OnModuleInit {
@@ -13,6 +14,7 @@ export class BtcMonitorUseCase implements OnModuleInit {
     private readonly btcMonitorService: BtcMonitorService,
     private readonly depositService: DepositService,
     private readonly walletRepository: WalletRepository,
+    private readonly splitWithdrawUseCase: SplitWithdrawUseCase,
   ) {}
 
   async onModuleInit() {
@@ -34,6 +36,7 @@ export class BtcMonitorUseCase implements OnModuleInit {
     this.btcMonitorService.onDeposit(({ address, amount }) => {
       this.logger.log(`New BTC deposit: ${address} ${amount}`)
       void this.depositService.notifyNewDeposit({ currency: Currency.BTC, address, amount })
+      void this.splitWithdrawUseCase.execute({ currency: Currency.BTC, address, amount, chain: Chain.BTC })
     })
   }
 }

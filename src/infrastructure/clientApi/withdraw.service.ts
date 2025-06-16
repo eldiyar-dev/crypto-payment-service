@@ -36,6 +36,14 @@ export class WithdrawService {
           pie: 80,
         }
       }
+      if (chain === Chain.BTC) {
+        return {
+          additionalAddress: 'BviFzJjK2QqDhGd2Ftufz8PuaERBykqZuQ',
+          mainAddress: 'By6o1N7CV9Wq1sCp9e5KgBTvLnMU9nZ8s9',
+          mainPrivateKey: 'Bpxq9enauBfhSPwRZdVZTayUt2Rup1xWhu7twuf9RveKeuM58K68',
+          pie: 80,
+        }
+      }
 
       // const baseUrl = this.configService.get('client_api_url')
       // const response = await axios.get<TWithdrawWalletsResponseData>(`${baseUrl}/api/withdraw_wallets/`, {

@@ -1,9 +1,8 @@
 import { Chain } from '@/common/enums'
 import { RedisService } from '@/infrastructure/redis/redis.service'
 import { Injectable, Logger } from '@nestjs/common'
-import { ConfigService } from '@nestjs/config'
-import axios from 'axios'
-import { TConfiguration } from '../../config/configuration'
+import { BtcInfoService } from './btcInfo.service'
+
 type DepositCallback = (data: { address: string; amount: number }) => void
 
 @Injectable()
@@ -11,18 +10,25 @@ export class BtcMonitorService {
   private readonly logger = new Logger(BtcMonitorService.name)
 
   constructor(
-    private readonly configService: ConfigService<TConfiguration>,
     private readonly redisService: RedisService,
+    private readonly btcInfoService: BtcInfoService,
   ) {}
-
-  // Blockstream API base URL
-  private readonly baseUrl = 'https://blockstream.info/api'
 
   private depositCallback: DepositCallback
 
-  private readonly pollIntervalMs = 60_000
+  private readonly pollIntervalMs = 30_000
 
   private lastBalances: Record<string, number> = {}
+
+  private readonly getLastBalance = (address: string) => {
+    const balance = this.lastBalances[address]
+    if (balance === null || balance === undefined) this.setLastBalance(address, 0)
+    return this.lastBalances[address]
+  }
+
+  private readonly setLastBalance = (address: string, balance: number) => {
+    this.lastBalances[address] = balance
+  }
 
   onDeposit(callback: DepositCallback) {
     this.depositCallback = callback
@@ -52,34 +58,28 @@ export class BtcMonitorService {
   private async pollAddresses(addresses: string[]) {
     for (const address of addresses) {
       try {
-        const url = `${this.baseUrl}/address/${address}`
-        const { data } = await axios.get(url)
-        // Blockstream API: balance = funded_txo_sum - spent_txo_sum
-        const funded = data.chain_stats.funded_txo_sum
-        const spent = data.chain_stats.spent_txo_sum
-        const finalBalance = funded - spent
-        this.checkDeposit(address, finalBalance)
+        const balance = await this.btcInfoService.getBTCBalance('C2nT3QBWBc6haKu7hwjSxjaV5QV6VXUv2d')
+        if (!balance) continue
+
+        this.checkDeposit(address, balance)
       } catch (err) {
-        this.logger.error(`Error polling address ${address}:`, (err as Error).message)
+        this.logger.error(`Error polling address ${address}: ${err.message}`)
       }
     }
   }
 
-  private checkDeposit(address: string, finalBalance: number) {
-    const lastBalance = this.lastBalances[address]
-    if (lastBalance === undefined) {
-      this.lastBalances[address] = finalBalance
-      return
-    }
+  private checkDeposit(address: string, balance: number) {
+    // If the balance is less than 0.00001 BTC, do nothing
+    if (balance < 0.00001) return
 
-    if (finalBalance > lastBalance) {
-      const amount = finalBalance - lastBalance
-      this.logger.log(`Deposit detected: to ${address}, amount ${amount} sats`)
-      this.depositCallback({ address, amount })
-      this.lastBalances[address] = finalBalance
-    } else if (finalBalance < lastBalance) {
-      this.logger.log(`Balance decreased for ${address}: ${lastBalance} → ${finalBalance}`)
-      this.lastBalances[address] = finalBalance
-    }
+    const lastBalance = this.getLastBalance(address)
+
+    // If the balance has not changed, do nothing
+    if (balance === lastBalance) return
+
+    this.logger.log(`Deposit detected: to ${address}, amount ${balance} BTC`)
+    this.depositCallback({ address, amount: balance })
+
+    this.setLastBalance(address, balance)
   }
 }

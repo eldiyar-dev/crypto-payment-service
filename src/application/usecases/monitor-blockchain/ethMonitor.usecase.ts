@@ -55,7 +55,8 @@ export class EthMonitorUseCase implements OnModuleInit {
     this.ethMonitorService.onDeposit(({ address, amount, currency, txHash }) => {
       this.depositQueue.push(async () => {
         this.logger.log(`New ETH deposit: ${address} ${amount} ${currency} txHash: ${txHash}`)
-        await this.depositService.notifyNewDeposit({ currency, address, amount, txHash })
+
+        void this.depositService.notifyNewDeposit({ currency, address, amount, txHash })
         await this.splitWithdrawUseCase.execute({ currency, address, amount, chain: Chain.ETH })
       })
       void this.processQueue()
