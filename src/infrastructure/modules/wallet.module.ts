@@ -5,15 +5,13 @@ import { WalletController } from '@/presentation/controllers/wallet.controller'
 import { HttpModule } from '@nestjs/axios'
 import { forwardRef, Module } from '@nestjs/common'
 import { TypeOrmModule } from '@nestjs/typeorm'
-import { BtcMonitorService } from '../blockchain/btc/btcMonitor.service'
-import { EthMonitorService } from '../blockchain/eth/ethMonitor.service'
-import { TronMonitorService } from '../blockchain/tron/tronMonitor.service'
+import { BtcMonitorService } from '../blockchain/btc'
 import { BtcBlockhainModule } from './blockchain'
 
 @Module({
   imports: [HttpModule, TypeOrmModule.forFeature([Wallet]), forwardRef(() => BtcBlockhainModule)],
   controllers: [WalletController],
-  providers: [StoreWalletUseCase, WalletRepository, EthMonitorService, BtcMonitorService, TronMonitorService],
+  providers: [StoreWalletUseCase, WalletRepository, BtcMonitorService],
   exports: [WalletRepository],
 })
 export class WalletModule {}

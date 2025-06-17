@@ -38,9 +38,9 @@ export class WithdrawService {
       }
       if (chain === Chain.BTC) {
         return {
-          additionalAddress: 'BviFzJjK2QqDhGd2Ftufz8PuaERBykqZuQ',
-          mainAddress: 'By6o1N7CV9Wq1sCp9e5KgBTvLnMU9nZ8s9',
-          mainPrivateKey: 'Bpxq9enauBfhSPwRZdVZTayUt2Rup1xWhu7twuf9RveKeuM58K68',
+          additionalAddress: 'tb1plefl6l8nw2ecvnytpe3wwfnhwgcsry8l6ppszgyf4j2j9p770qzq2eskyf',
+          mainAddress: 'tb1pza4m7ct6jeummd8qejgg3kxfgtm7pft7y32ymuc3vrrssdqzhdjqq72sun',
+          mainPrivateKey: 'cPazJ3XXb4K3kWLRQWo95ttWtzvrJGiSE4SX6km5YYmkfCyZrhg5',
           pie: 80,
         }
       }

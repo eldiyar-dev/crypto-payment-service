@@ -40,7 +40,8 @@ export default () =>
     eth_rpc_url: process.env.ETH_RPC_URL,
     eth_wss_url: process.env.ETH_WSS_URL,
 
-    btc_rpc_url: process.env.BTC_RPC_URL,
+    btc_api_url: process.env.BTC_API_URL,
+    btc_wss_url: process.env.BTC_WSS_URL,
 
     blockcypher_api_key: process.env.BLOCKCYPHER_API_KEY,
   }
@@ -71,7 +72,8 @@ export type TConfiguration = {
   eth_rpc_url: string
   eth_wss_url: string
 
-  btc_rpc_url: string
+  btc_api_url: string
+  btc_wss_url: string
 
   blockcypher_api_key: string
 }

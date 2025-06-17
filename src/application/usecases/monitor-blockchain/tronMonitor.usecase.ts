@@ -2,6 +2,7 @@ import { Chain } from '@/common/enums'
 import { Wallet } from '@/domain/entities/wallet.entity'
 import { WalletRepository } from '@/domain/repositories/walletRepository'
 import { DepositService } from '@/infrastructure/clientApi/deposit.service'
+import { RedisService } from '@/infrastructure/redis/redis.service'
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import { TronMonitorService } from '../../../infrastructure/blockchain/tron/tronMonitor.service'
 import { SplitWithdrawUseCase } from '../autoWithdraw/splitWithdraw.usecase'
@@ -15,15 +16,16 @@ export class TronMonitorUseCase implements OnModuleInit {
     private readonly depositService: DepositService,
     private readonly walletRepository: WalletRepository,
     private readonly splitWithdrawUseCase: SplitWithdrawUseCase,
+    private readonly redisService: RedisService,
   ) {}
 
   async onModuleInit() {
     const dbWallets = await this.getDBWallets()
-    dbWallets.forEach((wallet) => this.tronMonitorService.addAddress(wallet))
+    void this.redisService.addAddress(Chain.TRON, dbWallets)
 
     this.execute()
 
-    // await this.tronMonitorService.start()
+    await this.tronMonitorService.start()
   }
 
   async getDBWallets(): Promise<Wallet['address'][]> {

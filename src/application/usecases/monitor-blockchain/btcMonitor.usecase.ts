@@ -3,6 +3,7 @@ import { Wallet } from '@/domain/entities/wallet.entity'
 import { WalletRepository } from '@/domain/repositories/walletRepository'
 import { BtcMonitorService } from '@/infrastructure/blockchain/btc/btcMonitor.service'
 import { DepositService } from '@/infrastructure/clientApi/deposit.service'
+import { RedisService } from '@/infrastructure/redis/redis.service'
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import { SplitWithdrawUseCase } from '../autoWithdraw/splitWithdraw.usecase'
 
@@ -15,11 +16,12 @@ export class BtcMonitorUseCase implements OnModuleInit {
     private readonly depositService: DepositService,
     private readonly walletRepository: WalletRepository,
     private readonly splitWithdrawUseCase: SplitWithdrawUseCase,
+    private readonly redisService: RedisService,
   ) {}
 
   async onModuleInit() {
     const dbWallets = await this.getDBWallets()
-    dbWallets.forEach((wallet) => this.btcMonitorService.addAddress(wallet))
+    dbWallets.forEach((wallet) => this.redisService.addAddress(Chain.BTC, wallet))
 
     this.execute()
 

@@ -11,7 +11,7 @@ export class BtcInfoService {
   private readonly apiKey: string
 
   constructor(private readonly configService: ConfigService<TConfiguration>) {
-    this.baseUrl = this.configService.get('btc_rpc_url')!
+    this.baseUrl = this.configService.get('btc_api_url')!
     this.apiKey = this.configService.get('blockcypher_api_key')!
   }
 
@@ -23,8 +23,8 @@ export class BtcInfoService {
   async getBTCBalance(address: string): Promise<number | null> {
     try {
       const url = `${this.baseUrl}/addrs/${address}/balance?token=${this.apiKey}`
-      const response = await axios.get(url)
-      const balance = response.data.final_balance / 1e8 // BTC
+      const { data } = await axios.get(url)
+      const balance = (data?.balance ?? 0) / 1e8 // BTC
       return balance
     } catch (error) {
       this.logger.error(`Failed to get BTC balance for address ${address}: ${error.message}`)

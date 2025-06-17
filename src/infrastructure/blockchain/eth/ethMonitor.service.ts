@@ -19,15 +19,6 @@ export class EthMonitorService {
 
   private depositCallback: DepositCallback
 
-  async addAddress(address: string) {
-    try {
-      await this.redisService.addAddress(Chain.ETH, address)
-      this.logger.log(`Added address ${address} to monitor`)
-    } catch (error) {
-      this.logger.error(`Error adding address ${address} to monitor ${error.message}`)
-    }
-  }
-
   async getAddresses(): Promise<string[]> {
     const addresses = await this.redisService.getAddresses(Chain.ETH)
     return addresses.map((address) => address.toLowerCase())

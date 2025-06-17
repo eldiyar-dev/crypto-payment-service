@@ -29,15 +29,6 @@ export class TronMonitorService {
   private readonly pollInterval = 3_000 // 3 seconds
   private readonly confirmationThreshold = 1 // 1 confirmations
 
-  async addAddress(address: string) {
-    try {
-      await this.redisService.addAddress(Chain.TRON, address)
-      this.logger.log(`Added address ${address} to monitor`)
-    } catch (error) {
-      this.logger.error(`Error adding address ${address} to monitor ${error.message}`)
-    }
-  }
-
   async getAddresses(): Promise<string[]> {
     return this.redisService.getAddresses(Chain.TRON)
   }
