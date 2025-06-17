@@ -38,7 +38,7 @@ export class BtcTransactionService {
   private readonly apiKey: string
 
   constructor(private readonly configService: ConfigService<TConfiguration>) {
-    this.network = bitcoin.networks.testnet
+    this.network = bitcoin.networks.bitcoin
     this.baseUrl = this.configService.get('btc_api_url')!
     this.apiKey = this.configService.get('blockcypher_api_key')!
   }
