@@ -63,9 +63,9 @@ export class BtcMonitorService {
 
   private depositCallback: DepositCallback
 
-  private readonly pollIntervalMs = 30_000
-  private readonly confirmationsThreshold = 3
-  private readonly confirmationsCheckIntervalMs = 30_000
+  // private readonly pollIntervalMs = 30_000
+  private readonly confirmationsThreshold = 2
+  // private readonly confirmationsCheckIntervalMs = 30_000
 
   private readonly pendingDeposits: Record<string, { address: string; value: number }> = {}
 
@@ -104,6 +104,7 @@ export class BtcMonitorService {
     // }, this.pollIntervalMs)
     // // Run immediately
     // void this.pollAddresses(await this.getAddresses())
+
     const addresses = await this.getAddresses()
     for (const address of addresses) {
       this.websocketSubscribe(address)
@@ -115,15 +116,19 @@ export class BtcMonitorService {
 
     ws.onopen = () => {
       this.logger.log(`Websocket connected for ${address}`)
-      ws.send(JSON.stringify({ event: 'confirmed-tx' }))
+      ws.send(JSON.stringify({ event: 'tx-confirmation', address }))
     }
 
     ws.onmessage = (event) => {
       const tx: Transaction = JSON.parse(event.data as string) as Transaction
 
+      if (tx.event === 'pong') return
+
       if (tx.event) this.logger.log(`Event: ${tx.event}`)
 
       if (!tx?.outputs) return
+
+      if (tx.confirmations < this.confirmationsThreshold) return
 
       const depositBTC = this.parseDepositsByAddress(tx, address)
       if (depositBTC < 0.00005) return
