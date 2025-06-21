@@ -21,4 +21,19 @@ export class RedisService {
     this.logger.log(`Adding ${chain} address ${address.toString()}`)
     await this.redisRepository.setArray(`${chain}:address`, Array.isArray(address) ? address : [address])
   }
+
+  async get<T>(key: string): Promise<T | null> {
+    const value = await this.redisRepository.get(key)
+    if (!value) return null
+    try {
+      return JSON.parse(value) as T
+    } catch (e) {
+      this.logger.error(`Failed to parse JSON for key ${key}: ${(e as Error).message}`)
+      return null
+    }
+  }
+
+  async set(key: string, value: any): Promise<void> {
+    await this.redisRepository.set(key, JSON.stringify(value))
+  }
 }
