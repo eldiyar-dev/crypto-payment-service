@@ -17,6 +17,8 @@ export class EthMonitorService {
     private readonly redisService: RedisService,
   ) {}
 
+  private readonly minEthDeposit = 0.001 // 0.001 ETH
+
   private depositCallback: DepositCallback
 
   async getAddresses(): Promise<string[]> {
@@ -69,7 +71,7 @@ export class EthMonitorService {
         if (!(await this.getAddresses()).includes(to)) continue
 
         const amountEth = Number(ethers.formatEther(tx.value))
-        if (amountEth < 0.001) continue
+        if (amountEth < this.minEthDeposit) continue
 
         this.logger.log(`Deposit detected: ${amountEth} ETH to ${to} txHash: ${txHash}`)
         this.depositCallback({ address: to, amount: amountEth, currency: Currency.ETH, txHash })
