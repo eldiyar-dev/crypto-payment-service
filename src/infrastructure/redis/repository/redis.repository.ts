@@ -44,4 +44,8 @@ export class RedisRepository implements OnModuleDestroy {
   exists(...keys: string[]) {
     return this.redisClient.exists(keys)
   }
+
+  expire(key: string, seconds: number) {
+    return this.redisClient.expire(key, seconds)
+  }
 }

@@ -22,6 +22,19 @@ export class RedisService {
     await this.redisRepository.setArray(`${chain}:address`, Array.isArray(address) ? address : [address])
   }
 
+  async addFeeTransactionHash(txHash: string) {
+    this.logger.log(`Adding fee transaction hash ${txHash}`)
+    await this.redisRepository.set(`fee:txHash:${txHash}`, '1')
+
+    // Remove the transaction hash after 10 minutes
+    await this.redisRepository.expire(`fee:txHash:${txHash}`, 10 * 60)
+  }
+
+  async isFeeTransactionHash(txHash: string): Promise<boolean> {
+    const value = await this.redisRepository.get(`fee:txHash:${txHash}`)
+    return value === '1'
+  }
+
   async get<T>(key: string): Promise<T | null> {
     const value = await this.redisRepository.get(key)
     if (!value) return null

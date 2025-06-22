@@ -8,6 +8,7 @@ import { BlockchainTransactionService } from '@/infrastructure/blockchain/transa
 import { TronEnergyService, TronInfoService } from '@/infrastructure/blockchain/tron'
 import { ReportService } from '@/infrastructure/clientApi/report.service'
 import { WithdrawService } from '@/infrastructure/clientApi/withdraw.service'
+import { RedisService } from '@/infrastructure/redis/redis.service'
 import { Injectable, Logger } from '@nestjs/common'
 
 type TWithdrawParams = { currency: Currency; address: Wallet['address']; amount: number; chain: Chain }
@@ -36,6 +37,7 @@ export class SplitWithdrawUseCase {
     private readonly tronEnergyService: TronEnergyService,
     private readonly tronInfoService: TronInfoService,
     private readonly ethInfoService: EthInfoService,
+    private readonly redisService: RedisService,
   ) {}
 
   /**
@@ -256,6 +258,7 @@ export class SplitWithdrawUseCase {
       return false
     }
 
+    await this.redisService.addFeeTransactionHash(txHash)
     this.logger.log(`Send ${gasPriceInEth} ETH for fee to ${toAddress} txHash: ${txHash}`)
     return txHash
   }

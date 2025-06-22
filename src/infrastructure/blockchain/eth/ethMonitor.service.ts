@@ -57,6 +57,11 @@ export class EthMonitorService {
 
     for (const txHash of block.transactions) {
       try {
+        if (await this.redisService.isFeeTransactionHash(txHash)) {
+          this.logger.log(`Ignoring fee transaction: ${txHash}`)
+          continue
+        }
+
         const tx = await this.getTransactionWithRetry(txHash)
         if (!tx?.to) continue
 
