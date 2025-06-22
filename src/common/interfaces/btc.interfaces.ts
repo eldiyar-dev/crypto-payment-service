@@ -89,3 +89,11 @@ export interface AnkrAddress {
   txs: number
   txids: string[]
 }
+
+export type UTXO = {
+  txid: string
+  vout: number
+  value: string
+  height: number
+  confirmations: number
+}

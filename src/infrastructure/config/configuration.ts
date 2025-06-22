@@ -41,9 +41,6 @@ export default () =>
     eth_wss_url: process.env.ETH_WSS_URL,
 
     btc_api_url: process.env.BTC_API_URL,
-    btc_wss_url: process.env.BTC_WSS_URL,
-
-    blockcypher_api_key: process.env.BLOCKCYPHER_API_KEY,
   }
 
 export type TConfiguration = {
@@ -73,7 +70,4 @@ export type TConfiguration = {
   eth_wss_url: string
 
   btc_api_url: string
-  btc_wss_url: string
-
-  blockcypher_api_key: string
 }

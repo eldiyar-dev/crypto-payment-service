@@ -1,4 +1,4 @@
-import { AnkrAddress, AnkrBlock, AnkrStatus, AnkrTransaction } from '@/common/interfaces'
+import { AnkrAddress, AnkrBlock, AnkrStatus, AnkrTransaction, UTXO } from '@/common/interfaces'
 import { TConfiguration } from '@/infrastructure/config/configuration'
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
@@ -50,6 +50,28 @@ export class BtcInfoService {
         this.logger.error(`Failed to get block by height ${height}: ${(error as Error).message}`)
       }
       return []
+    }
+  }
+
+  async getUTXOs(address: string): Promise<UTXO[]> {
+    try {
+      const utxoUrl = `${this.baseUrl}/api/v2/utxo/${address}`
+      const { data } = await axios.get<UTXO[]>(utxoUrl)
+      return data ?? []
+    } catch (error) {
+      this.logger.error(`Error getting UTXOs for ${address}: ${(error as Error).message}`, error)
+      return []
+    }
+  }
+
+  async getRawTx(txid: string): Promise<string | null> {
+    try {
+      const url = `${this.baseUrl}/api/v2/tx/${txid}`
+      const { data } = await axios.get<{ hex: string }>(url)
+      return data?.hex ?? null
+    } catch (error) {
+      this.logger.error(`Error getting raw tx for ${txid}: ${(error as Error).message}`, error)
+      return null
     }
   }
 }
