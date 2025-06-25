@@ -71,7 +71,7 @@ export class BtcMonitorService {
     try {
       this.logger.log(`Processing block ${height}`)
       const txs = await this.btcInfoService.getBlockByHeight(height)
-      if (txs.length) {
+      if (!txs.length) {
         this.logger.warn(`Block ${height} not found or has no transactions.`)
         return
       }
