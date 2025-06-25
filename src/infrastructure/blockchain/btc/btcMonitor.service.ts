@@ -58,9 +58,9 @@ export class BtcMonitorService {
         this.logger.log(`New blocks detected. From ${this.lastProcessedBlock + 1} to ${latestBlockHeight}`)
         for (let height = this.lastProcessedBlock + 1; height <= latestBlockHeight; height++) {
           await this.processBlock(height)
+          await this.redisService.set('last-processed-block-btc', height)
+          this.lastProcessedBlock = height
         }
-        this.lastProcessedBlock = latestBlockHeight
-        await this.redisService.set('last-processed-block-btc', latestBlockHeight)
       }
     } catch (error) {
       this.logger.error(`Error polling for new blocks: ${String(error)}`)
