@@ -57,7 +57,12 @@ export class TronMonitorService {
 
   private async pollDeposits() {
     try {
-      const currentBlock = await this.tronWeb.trx.getCurrentBlock()
+      const currentBlock = await this.getCurrentBlockWithRetry()
+
+      if (!currentBlock) {
+        this.logger.error('Error getting current block')
+        return
+      }
 
       const currentBlockNumber = currentBlock.block_header.raw_data.number
       if (this.lastCheckedBlock >= currentBlockNumber) return
@@ -137,5 +142,9 @@ export class TronMonitorService {
 
   private async getBlockWithRetry(blockNumber: number): Promise<Block | null> {
     return withRetry(() => this.tronWeb.trx.getBlock(blockNumber))
+  }
+
+  private async getCurrentBlockWithRetry(): Promise<Block | null> {
+    return withRetry(() => this.tronWeb.trx.getCurrentBlock())
   }
 }
