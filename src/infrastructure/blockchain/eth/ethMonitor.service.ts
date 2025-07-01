@@ -57,36 +57,26 @@ export class EthMonitorService {
     const block = await this.getBlockWithRetry(blockNumber)
     if (!block) return
 
-    for (const txHash of block.transactions) {
-      try {
-        if (await this.redisService.isFeeTransactionHash(txHash)) {
-          this.logger.log(`Ignoring fee transaction: ${txHash}`)
-          continue
-        }
-
-        const tx = await this.getTransactionWithRetry(txHash)
-        if (!tx?.to) continue
-
-        const to = tx.to.toLowerCase()
-        if (!(await this.getAddresses()).includes(to)) continue
-
-        const amountEth = Number(ethers.formatEther(tx.value))
-        if (amountEth < this.minEthDeposit) continue
-
-        this.logger.log(`Deposit detected: ${amountEth} ETH to ${to} txHash: ${txHash}`)
-        this.depositCallback({ address: to, amount: amountEth, currency: Currency.ETH, txHash })
-      } catch (err) {
-        this.logger.error('Error processing transaction', (err as Error).message)
+    for (const tx of block.prefetchedTransactions) {
+      if (await this.redisService.isFeeTransactionHash(tx.hash)) {
+        this.logger.log(`Ignoring fee transaction: ${tx.hash}`)
+        continue
       }
+
+      if (!tx?.to) continue
+      const to = tx.to.toLowerCase()
+      if (!(await this.getAddresses()).includes(to)) continue
+
+      const amountEth = Number(ethers.formatEther(tx.value))
+      if (amountEth < this.minEthDeposit) continue
+
+      this.logger.log(`Deposit detected: ${amountEth} ETH to ${to} txHash: ${tx.hash}`)
+      this.depositCallback({ address: to, amount: amountEth, currency: Currency.ETH, txHash: tx.hash })
     }
   }
 
-  private async getTransactionWithRetry(txHash: string): Promise<ethers.TransactionResponse | null> {
-    return withRetry(() => this.provider.getTransaction(txHash))
-  }
-
   private async getBlockWithRetry(blockNumber: number): Promise<ethers.Block | null> {
-    return withRetry(() => this.provider.getBlock(blockNumber))
+    return withRetry(() => this.provider.getBlock(blockNumber, true))
   }
 
   private async listenUsdtTransfers() {
