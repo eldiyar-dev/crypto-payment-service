@@ -21,7 +21,7 @@ export class BtcMonitorUseCase implements OnModuleInit {
 
   async onModuleInit() {
     const dbWallets = await this.getDBWallets()
-    dbWallets.forEach((wallet) => this.redisService.addAddress(Chain.BTC, wallet))
+    if (dbWallets.length) dbWallets.forEach((wallet) => this.redisService.addAddress(Chain.BTC, wallet))
 
     this.execute()
 

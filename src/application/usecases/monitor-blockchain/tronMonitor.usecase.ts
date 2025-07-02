@@ -21,7 +21,7 @@ export class TronMonitorUseCase implements OnModuleInit {
 
   async onModuleInit() {
     const dbWallets = await this.getDBWallets()
-    void this.redisService.addAddress(Chain.TRON, dbWallets)
+    if (dbWallets.length) void this.redisService.addAddress(Chain.TRON, dbWallets)
 
     this.execute()
 

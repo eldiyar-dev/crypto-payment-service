@@ -40,7 +40,7 @@ export class EthMonitorUseCase implements OnModuleInit {
 
   async onModuleInit() {
     const dbWallets = await this.getDBWallets()
-    void this.redisService.addAddress(Chain.ETH, dbWallets)
+    if (dbWallets.length) void this.redisService.addAddress(Chain.ETH, dbWallets)
 
     this.execute()
 
