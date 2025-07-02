@@ -2,6 +2,7 @@ import { Currency } from '@/common/enums'
 import type { TConfiguration } from '@/infrastructure/config/configuration'
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
+import axios from 'axios'
 
 type TDepositData = {
   currency: Currency
@@ -22,13 +23,14 @@ export class DepositService {
 
   async notifyNewDeposit({ currency, address, amount, txHash }: TDepositData): Promise<void> {
     try {
-      // await axios.post(`${this.baseUrl}/api/new_deposit`, {
-      //   currency,
-      //   address,
-      //   amount,
-      // })
+      await axios.post(`${this.baseUrl}/api/new_deposit`, {
+        currency,
+        address,
+        amount,
+        txHash,
+      })
     } catch (error) {
-      this.logger.error(`Error notifying new deposit: ${error}`)
+      this.logger.error(`Error notifying new deposit: ${error.message}`, error)
     }
   }
 }

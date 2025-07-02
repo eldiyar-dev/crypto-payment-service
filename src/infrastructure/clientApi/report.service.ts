@@ -2,6 +2,7 @@ import { Currency } from '@/common/enums'
 import type { TConfiguration } from '@/infrastructure/config/configuration'
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
+import axios from 'axios'
 
 type TReportData = {
   currency: Currency
@@ -22,14 +23,14 @@ export class ReportService {
 
   async sendReport({ currency, address, amount, message }: TReportData): Promise<void> {
     try {
-      // await axios.post(`${this.baseUrl}/api/report`, {
-      //   currency,
-      //   address,
-      //   amount,
-      //   message,
-      // })
+      await axios.post(`${this.baseUrl}/api/report`, {
+        currency,
+        address,
+        amount,
+        message,
+      })
     } catch (error) {
-      this.logger.error(`Error sending report: ${error}`)
+      this.logger.error(`Error sending report: ${error.message}`, error)
     }
   }
 }
