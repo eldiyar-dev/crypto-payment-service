@@ -72,64 +72,78 @@ export class TronMonitorService {
         if (!block?.transactions) continue
 
         for (const tx of block.transactions) {
-          if (!tx.raw_data.contract.length || !tx.raw_data.contract) continue
+          try {
+            if (!tx.raw_data.contract.length || !tx.raw_data.contract) continue
 
-          // Calculate the number of confirmations
-          const confirmations = currentBlockNumber - blockNum + 1
-          if (confirmations < this.confirmationThreshold) continue
+            // Calculate the number of confirmations
+            const confirmations = currentBlockNumber - blockNum + 1
+            if (confirmations < this.confirmationThreshold) continue
 
-          const contract = tx.raw_data.contract[0]
+            const contract = tx.raw_data.contract[0]
 
-          // --- TRX (TransferContract) ---
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-enum-comparison
-          if (contract.type === 'TransferContract') {
-            const { to_address, amount } = contract.parameter.value as { to_address: string; amount: number }
+            // --- TRX (TransferContract) ---
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-enum-comparison
+            if (contract.type === 'TransferContract') {
+              const { to_address, amount } = contract.parameter.value as { to_address: string; amount: number }
 
-            const toAddress = this.tronWeb.address.fromHex(to_address)
+              const toAddress = this.tronWeb.address.fromHex(to_address)
 
-            const trxAmount = Number(amount) / 1e6
+              const trxAmount = Number(amount) / 1e6
 
-            if (!(await this.getAddresses()).includes(toAddress)) continue
+              if (!(await this.getAddresses()).includes(toAddress)) continue
 
-            if (trxAmount < this.minTrxDeposit) continue
+              if (trxAmount < this.minTrxDeposit) continue
 
-            this.logger.log(`Deposit detected: ${trxAmount} TRX to ${toAddress} txHash: ${tx.txID}`)
+              this.logger.log(`Deposit detected: ${trxAmount} TRX to ${toAddress} txHash: ${tx.txID}`)
 
-            void this.depositCallback({ address: toAddress, amount: trxAmount, currency: Currency.TRX, txHash: tx.txID })
+              void this.depositCallback({ address: toAddress, amount: trxAmount, currency: Currency.TRX, txHash: tx.txID })
 
-            continue
-          }
+              continue
+            }
 
-          // --- USDT (TRC20) ---
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-enum-comparison
-          if (contract.type === 'TriggerSmartContract') {
-            const { contract_address, data } = contract.parameter.value as { contract_address: string; data: string }
+            // --- USDT (TRC20) ---
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-enum-comparison
+            if (contract.type === 'TriggerSmartContract') {
+              const { contract_address, data } = contract.parameter.value as { contract_address: string; data: string }
 
-            const contractAddress = this.tronWeb.address.fromHex(contract_address)
+              const contractAddress = this.tronWeb.address.fromHex(contract_address)
 
-            // Address of USDT (TRC20) contract on Tron
-            if (contractAddress !== this.usdtContractAddress) continue
+              // Address of USDT (TRC20) contract on Tron
+              if (contractAddress !== this.usdtContractAddress) continue
 
-            // Check if the method transfer(address,uint256) is called
-            if (!data?.startsWith('a9059cbb')) continue
+              // Check if the method transfer(address,uint256) is called
+              const isTransfer = data.startsWith('a9059cbb')
+              const isTransferFrom = data.startsWith('23b872dd')
 
-            // Decode the recipient address
-            const toAddressHex = '41' + data.slice(8 + 24, 8 + 64)
+              if (!isTransfer && !isTransferFrom) continue
 
-            const toAddress = this.tronWeb.address.fromHex(toAddressHex)
+              // Decode the recipient address
+              const toAddressHex = isTransfer ? '41' + data.slice(32, 72) : '41' + data.slice(76, 116)
 
-            // Decode the amount
-            const amountHex = data.slice(8 + 64, 8 + 128)
+              const toAddress = this.tronWeb.address.fromHex(toAddressHex)
 
-            const usdtAmount = parseInt(amountHex, 16) / 1e6 // 6 decimal places
+              // Decode the amount
+              const amountHex = data.slice(72, 136)
 
-            if (!(await this.getAddresses()).includes(toAddress)) continue
+              const amountBigInt = BigInt('0x' + amountHex)
+              const usdtAmount = Number(amountBigInt) / 1e6
 
-            if (usdtAmount < this.minUsdtDeposit) continue
+              // Check if the amount is valid
+              if (isNaN(usdtAmount) || usdtAmount <= 0) {
+                this.logger.warn(`Invalid USDT amount for transaction ${tx.txID}: ${usdtAmount}`)
+                continue
+              }
 
-            this.logger.log(`Deposit detected: ${usdtAmount} USDT to ${toAddress} txHash: ${tx.txID}`)
+              if (!(await this.getAddresses()).includes(toAddress)) continue
 
-            void this.depositCallback({ address: toAddress, amount: usdtAmount, currency: Currency.USDT, txHash: tx.txID })
+              if (usdtAmount < this.minUsdtDeposit) continue
+
+              this.logger.log(`Deposit detected: ${usdtAmount} USDT to ${toAddress} txHash: ${tx.txID}`)
+
+              void this.depositCallback({ address: toAddress, amount: usdtAmount, currency: Currency.USDT, txHash: tx.txID })
+            }
+          } catch (error) {
+            this.logger.error(`Error processing transaction ${tx.txID}: ${error.message}`)
           }
         }
       }
