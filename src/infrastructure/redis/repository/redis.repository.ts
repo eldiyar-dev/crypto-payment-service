@@ -48,4 +48,16 @@ export class RedisRepository implements OnModuleDestroy {
   expire(key: string, seconds: number) {
     return this.redisClient.expire(key, seconds)
   }
+
+  sadd(key: string, ...values: string[]) {
+    return this.redisClient.sadd(key, ...values)
+  }
+
+  srem(key: string, ...values: string[]) {
+    return this.redisClient.srem(key, ...values)
+  }
+
+  smembers(key: string) {
+    return this.redisClient.smembers(key)
+  }
 }
