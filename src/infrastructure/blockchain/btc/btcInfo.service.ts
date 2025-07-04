@@ -74,4 +74,15 @@ export class BtcInfoService {
       return null
     }
   }
+
+  async getTxByHash(txHash: string): Promise<AnkrTransaction | null> {
+    try {
+      const url = `${this.baseUrl}/api/v2/tx/${txHash}`
+      const { data } = await axios.get<AnkrTransaction>(url)
+      return data ?? null
+    } catch (error) {
+      this.logger.error(`Error getting tx by hash ${txHash}: ${(error as Error).message}`, error)
+      return null
+    }
+  }
 }

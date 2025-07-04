@@ -1,4 +1,5 @@
 import { Chain } from '@/common/enums'
+import { AnkrTransaction } from '@/common/interfaces'
 import { RedisService } from '@/infrastructure/redis/redis.service'
 import { Injectable, Logger } from '@nestjs/common'
 import { BtcInfoService } from './btcInfo.service'
@@ -44,6 +45,8 @@ export class BtcMonitorService {
 
   private async pollForNewBlocks() {
     try {
+      void this.checkPendingDeposits()
+
       this.logger.log('Polling for new blocks...')
       const latestBlockHeight = await this.btcInfoService.getLatestBlockHeight()
 
@@ -82,26 +85,58 @@ export class BtcMonitorService {
       const monitoredAddressesSet = new Set(monitoredAddresses)
 
       for (const tx of txs) {
-        if (tx.confirmations < this.confirmationsThreshold) continue
-
         for (const output of tx.vout) {
           if (!output?.addresses?.length) continue
 
           for (const address of output.addresses) {
             if (!monitoredAddressesSet.has(address)) continue
 
-            const amountBTC = +output.value / 1e8
-
-            // Ignore small deposits (0.00005 BTC) 5$
-            if (amountBTC < 0.00005) continue
-
-            this.logger.log(`Deposit detected: to ${address}, amount ${amountBTC} BTC, txid: ${tx.txid}`)
-            this.depositCallback({ address, amount: amountBTC })
+            await this.redisService.setBtcPendingTransaction(tx.txid)
           }
         }
       }
     } catch (error) {
       this.logger.error(`Error processing block ${height}: ${String(error)}`)
+    }
+  }
+
+  private async checkPendingDeposits() {
+    const pendingTxs = await this.redisService.getBtcPendingTransactions()
+    if (!pendingTxs.length) return
+
+    for (const txid of pendingTxs) {
+      const tx = await this.btcInfoService.getTxByHash(txid)
+      if (!tx) continue
+
+      const confirmations = tx.confirmations
+      if (confirmations < this.confirmationsThreshold) continue
+
+      await this.checkDeposit(tx)
+
+      await this.redisService.removeBtcPendingTransaction(txid)
+    }
+  }
+
+  private async checkDeposit(tx: AnkrTransaction) {
+    const monitoredAddresses = await this.getAddresses()
+    if (!monitoredAddresses.length) return
+
+    const monitoredAddressesSet = new Set(monitoredAddresses)
+
+    for (const output of tx.vout) {
+      if (!output?.addresses?.length) continue
+
+      for (const address of output.addresses) {
+        if (!monitoredAddressesSet.has(address)) continue
+
+        const amountBTC = +output.value / 1e8
+
+        // Ignore small deposits (0.00005 BTC) 5$
+        if (amountBTC < 0.00005) continue
+
+        this.logger.log(`Deposit detected: to ${address}, amount ${amountBTC} BTC, txid: ${tx.txid}`)
+        // this.depositCallback({ address, amount: amountBTC })
+      }
     }
   }
 }
