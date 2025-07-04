@@ -1,17 +1,12 @@
 import { Chain } from '@/common/enums/chain.enum'
 import { Injectable, Logger } from '@nestjs/common'
-import { ConfigService } from '@nestjs/config'
 import { RedisRepository } from 'src/infrastructure/redis/repository/redis.repository'
-import { TConfiguration } from '../config/configuration'
 
 @Injectable()
 export class RedisService {
   private readonly logger = new Logger(RedisService.name)
 
-  constructor(
-    private readonly redisRepository: RedisRepository,
-    private readonly configService: ConfigService<TConfiguration>,
-  ) {}
+  constructor(private readonly redisRepository: RedisRepository) {}
 
   async getAddresses(chain: Chain): Promise<string[]> {
     return this.redisRepository.getArray(`${chain}:address`)
@@ -48,5 +43,19 @@ export class RedisService {
 
   async set(key: string, value: any): Promise<void> {
     await this.redisRepository.set(key, JSON.stringify(value))
+  }
+
+  private readonly btcPendingKey = 'btc:pending:txs'
+
+  async setBtcPendingTransaction(txHash: string) {
+    await this.redisRepository.sadd(this.btcPendingKey, txHash)
+  }
+
+  async getBtcPendingTransactions(): Promise<string[]> {
+    return this.redisRepository.smembers(this.btcPendingKey)
+  }
+
+  async removeBtcPendingTransaction(txHash: string) {
+    await this.redisRepository.srem(this.btcPendingKey, txHash)
   }
 }
