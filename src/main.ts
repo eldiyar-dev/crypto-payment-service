@@ -3,6 +3,7 @@ import { Logger, ValidationPipe } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { NestFactory } from '@nestjs/core'
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
+import * as bodyParser from 'body-parser'
 import * as basicAuth from 'express-basic-auth'
 import * as fs from 'fs'
 import helmet from 'helmet'
@@ -17,6 +18,9 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     logger: winstonConfig,
   })
+
+  app.use(bodyParser.json({ limit: '4mb' }))
+  app.use(bodyParser.urlencoded({ limit: '4mb', extended: true }))
 
   const configService = app.get(ConfigService<TConfiguration>)
   const port = configService.get<TConfiguration['port']>('port')!

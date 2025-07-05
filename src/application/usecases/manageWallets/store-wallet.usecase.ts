@@ -33,8 +33,8 @@ export class StoreWalletUseCase {
       }
 
       if (wallet.chain === Chain.TRON) void this.redisService.addAddress(Chain.TRON, wallet.address)
-    })
 
-    return this.walletRepository.createEntities(lowerCaseWallets)
+      void this.walletRepository.createEntity(wallet)
+    })
   }
 }
