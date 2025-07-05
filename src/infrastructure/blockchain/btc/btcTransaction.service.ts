@@ -123,8 +123,8 @@ export class BtcTransactionService {
 
   private async broadcastTransaction(txHex: string): Promise<string | null> {
     try {
-      const url = `${this.baseUrl}/api/v2/sendtx/`
-      const { data } = await axios.post<{ result: string }>(url, { 'hex-tx-data': txHex }, { headers: { 'Content-Type': 'application/json' } })
+      const url = `${this.baseUrl}/api/v2/sendtx/${txHex}`
+      const { data } = await axios.get<{ result: string }>(url)
       return data?.result ?? null
     } catch (error) {
       this.logger.error(`Error broadcasting transaction: ${(error as Error).message}`, error)
