@@ -73,7 +73,7 @@ export class BtcMonitorService {
   private async processBlock(height: number) {
     try {
       this.logger.log(`Processing block ${height}`)
-      const txs = await this.btcInfoService.getBlockByHeight(height)
+      const txs = await this.btcInfoService.getBlockByHeightAllPages(height)
       if (!txs.length) {
         this.logger.warn(`Block ${height} not found or has no transactions.`)
         return
@@ -135,7 +135,7 @@ export class BtcMonitorService {
         if (amountBTC < 0.00005) continue
 
         this.logger.log(`Deposit detected: to ${address}, amount ${amountBTC} BTC, txid: ${tx.txid}`)
-        // this.depositCallback({ address, amount: amountBTC })
+        this.depositCallback({ address, amount: amountBTC })
       }
     }
   }

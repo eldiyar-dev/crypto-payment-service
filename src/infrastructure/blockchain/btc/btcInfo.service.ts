@@ -53,6 +53,33 @@ export class BtcInfoService {
     }
   }
 
+  async getBlockByHeightAllPages(height: number): Promise<AnkrTransaction[]> {
+    try {
+      const url = `${this.baseUrl}/api/v2/block/${height}`
+      const { data } = await axios.get<AnkrBlock>(url)
+      if (!data?.txs) return []
+
+      let allTxs = [...data.txs]
+      const totalPages = data.totalPages || 1
+
+      if (totalPages <= 1) return allTxs
+
+      const requests = Array.from({ length: totalPages - 1 }, (_, i) => axios.get<AnkrBlock>(`${url}?page=${i + 2}`))
+
+      const responses = await Promise.all(requests)
+      for (const { data } of responses) {
+        if (!data?.txs?.length) continue
+
+        allTxs = allTxs.concat(data.txs)
+      }
+
+      return allTxs
+    } catch (error) {
+      this.logger.error(`Failed to get all block pages for height ${height}: ${(error as Error).message}`)
+      return []
+    }
+  }
+
   async getUTXOs(address: string): Promise<UTXO[]> {
     try {
       const utxoUrl = `${this.baseUrl}/api/v2/utxo/${address}`
