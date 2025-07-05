@@ -35,9 +35,9 @@ export class BtcMonitorUseCase implements OnModuleInit {
   execute(): void {
     this.logger.log('Starting BTC monitoring...')
 
-    this.btcMonitorService.onDeposit(({ address, amount }) => {
+    this.btcMonitorService.onDeposit(({ address, amount, txHash }) => {
       this.logger.log(`New BTC deposit: ${address} ${amount}`)
-      void this.depositService.notifyNewDeposit({ currency: Currency.BTC, address, amount })
+      void this.depositService.notifyNewDeposit({ currency: Currency.BTC, address, amount, txHash })
       void this.splitWithdrawUseCase.execute({ currency: Currency.BTC, address, amount, chain: Chain.BTC })
     })
   }

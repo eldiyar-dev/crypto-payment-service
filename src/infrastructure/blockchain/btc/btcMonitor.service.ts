@@ -4,7 +4,7 @@ import { RedisService } from '@/infrastructure/redis/redis.service'
 import { Injectable, Logger } from '@nestjs/common'
 import { BtcInfoService } from './btcInfo.service'
 
-type DepositCallback = (data: { address: string; amount: number }) => void
+type DepositCallback = (data: { address: string; amount: number; txHash: string }) => void
 
 @Injectable()
 export class BtcMonitorService {
@@ -135,7 +135,7 @@ export class BtcMonitorService {
         if (amountBTC < 0.00005) continue
 
         this.logger.log(`Deposit detected: to ${address}, amount ${amountBTC} BTC, txid: ${tx.txid}`)
-        this.depositCallback({ address, amount: amountBTC })
+        this.depositCallback({ address, amount: amountBTC, txHash: tx.txid })
       }
     }
   }
