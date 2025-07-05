@@ -72,16 +72,26 @@ export class BtcTransactionService {
 
       const amountSatoshi = Math.floor(amount * 1e8)
       const fee = 1000 // satoshi
-      if (totalInput < amountSatoshi + fee) {
-        this.logger.error(`Insufficient funds for fromAddress: ${fromAddress} amount: ${amount} BTC`)
+
+      if (totalInput < fee) {
+        this.logger.error(`Insufficient funds for fee for fromAddress: ${fromAddress}`)
         return null
       }
 
-      // Add outputs
-      psbt.addOutput({ address: toAddress, value: amountSatoshi })
+      let sendAmount = amountSatoshi
+      if (totalInput < amountSatoshi + fee) {
+        // Not enough for requested amount, but enough for fee
+        sendAmount = totalInput - fee
+        if (sendAmount <= 0) {
+          this.logger.error(`Insufficient funds for fromAddress: ${fromAddress} (not enough for fee)`)
+          return null
+        }
+        this.logger.warn(`Not enough funds for requested amount, sending max possible: ${sendAmount / 1e8} BTC`)
+      }
 
-      // Add change if necessary
-      const change = totalInput - amountSatoshi - fee
+      psbt.addOutput({ address: toAddress, value: sendAmount })
+
+      const change = totalInput - sendAmount - fee
       if (change > 0) psbt.addOutput({ address: fromAddress, value: change })
 
       // 3. Sign
