@@ -30,6 +30,8 @@ export class TronMonitorService {
   private readonly confirmationThreshold = 1 // 1 confirmations
   private readonly minTrxDeposit = 1 // 1 TRX
   private readonly minUsdtDeposit = 0.5 // 0.5 USDT
+  private isPolling = false
+  private intervalId: NodeJS.Timeout | null = null
 
   async getAddresses(): Promise<string[]> {
     return this.redisService.getAddresses(Chain.TRON)
@@ -47,7 +49,9 @@ export class TronMonitorService {
       const block = await this.tronWeb.trx.getCurrentBlock()
       this.lastCheckedBlock = block.block_header.raw_data.number
 
-      setInterval(() => {
+      this.stop()
+
+      this.intervalId = setInterval(() => {
         void this.pollDeposits()
       }, this.pollInterval)
     } catch (error) {
@@ -55,7 +59,17 @@ export class TronMonitorService {
     }
   }
 
+  stop() {
+    if (!this.intervalId) return
+
+    clearInterval(this.intervalId)
+    this.intervalId = null
+  }
+
   private async pollDeposits() {
+    if (this.isPolling) return
+    this.isPolling = true
+
     try {
       const currentBlock = await this.getCurrentBlockWithRetry()
 
@@ -63,6 +77,8 @@ export class TronMonitorService {
         this.logger.error('Error getting current block')
         return
       }
+
+      const addresses = await this.getAddresses()
 
       const currentBlockNumber = currentBlock.block_header.raw_data.number
       if (this.lastCheckedBlock >= currentBlockNumber) return
@@ -73,7 +89,7 @@ export class TronMonitorService {
 
         for (const tx of block.transactions) {
           try {
-            if (!tx.raw_data.contract.length || !tx.raw_data.contract) continue
+            if (!Array.isArray(tx?.raw_data?.contract) || !tx.raw_data.contract.length) continue
 
             // Calculate the number of confirmations
             const confirmations = currentBlockNumber - blockNum + 1
@@ -90,7 +106,7 @@ export class TronMonitorService {
 
               const trxAmount = Number(amount) / 1e6
 
-              if (!(await this.getAddresses()).includes(toAddress)) continue
+              if (!addresses.includes(toAddress)) continue
 
               if (trxAmount < this.minTrxDeposit) continue
 
@@ -109,7 +125,7 @@ export class TronMonitorService {
               const contractAddress = this.tronWeb.address.fromHex(contract_address)
 
               // Address of USDT (TRC20) contract on Tron
-              if (contractAddress !== this.usdtContractAddress) continue
+              if (contractAddress.toLocaleLowerCase() !== this.usdtContractAddress.toLocaleLowerCase()) continue
 
               // Check if the method transfer(address,uint256) is called
               const isTransfer = data.startsWith('a9059cbb')
@@ -125,6 +141,11 @@ export class TronMonitorService {
               // Decode the amount
               const amountHex = data.slice(72, 136)
 
+              if (data.length < 136) {
+                this.logger.warn(`Data too short for TRC20 transfer in tx ${tx.txID}`, data)
+                continue
+              }
+
               const amountBigInt = BigInt('0x' + amountHex)
               const usdtAmount = Number(amountBigInt) / 1e6
 
@@ -134,7 +155,7 @@ export class TronMonitorService {
                 continue
               }
 
-              if (!(await this.getAddresses()).includes(toAddress)) continue
+              if (!addresses.includes(toAddress)) continue
 
               if (usdtAmount < this.minUsdtDeposit) continue
 
@@ -143,14 +164,15 @@ export class TronMonitorService {
               void this.depositCallback({ address: toAddress, amount: usdtAmount, currency: Currency.USDT, txHash: tx.txID })
             }
           } catch (error) {
-            this.logger.error(`Error processing transaction ${tx.txID}: ${error.message}`)
+            this.logger.error(`Error processing transaction ${tx.txID}: ${error instanceof Error ? error.message : String(error)}`)
           }
         }
+        this.lastCheckedBlock = blockNum
       }
-
-      this.lastCheckedBlock = currentBlockNumber
     } catch (err: unknown) {
       this.logger.error('Error polling Tron deposits', err)
+    } finally {
+      this.isPolling = false
     }
   }
 
