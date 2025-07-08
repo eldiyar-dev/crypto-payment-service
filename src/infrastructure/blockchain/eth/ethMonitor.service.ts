@@ -52,6 +52,7 @@ export class EthMonitorService {
   private async listenEthTransfers() {
     await this.provider.on('block', async (blockNumber: number) => {
       try {
+        this.logger.log(`Checking block ${blockNumber}`)
         await this.checkBlockForDeposits(blockNumber)
       } catch (err) {
         this.logger.error('Error processing block', err instanceof Error ? err.message : String(err))
@@ -61,7 +62,10 @@ export class EthMonitorService {
 
   private async checkBlockForDeposits(blockNumber: number) {
     const block = await this.getBlockWithRetry(blockNumber)
-    if (!block) return
+    if (!block) {
+      this.logger.error(`Block ${blockNumber} not found`)
+      return
+    }
 
     const addresses = await this.getAddresses()
 
@@ -71,7 +75,10 @@ export class EthMonitorService {
         continue
       }
 
-      if (!tx?.to) continue
+      if (!tx?.to) {
+        this.logger.log(`Transaction ${tx.hash} has no to address`)
+        continue
+      }
       const to = tx.to.toLowerCase()
       if (!addresses.includes(to)) continue
 

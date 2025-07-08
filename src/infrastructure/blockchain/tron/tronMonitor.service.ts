@@ -85,11 +85,17 @@ export class TronMonitorService {
 
       for (let blockNum = this.lastCheckedBlock + 1; blockNum <= currentBlockNumber; blockNum++) {
         const block = await this.getBlockWithRetry(blockNum)
-        if (!block?.transactions) continue
+        if (!block?.transactions) {
+          this.logger.error(`Block ${blockNum} transactions not found`)
+          continue
+        }
 
         for (const tx of block.transactions) {
           try {
-            if (!Array.isArray(tx?.raw_data?.contract) || !tx.raw_data.contract.length) continue
+            if (!Array.isArray(tx?.raw_data?.contract) || !tx.raw_data.contract.length) {
+              this.logger.error(`Block ${blockNum} transaction ${tx.txID} has no contract`)
+              continue
+            }
 
             // Calculate the number of confirmations
             const confirmations = currentBlockNumber - blockNum + 1
