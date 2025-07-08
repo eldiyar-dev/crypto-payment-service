@@ -28,6 +28,8 @@ export class EthMonitorUseCase implements OnModuleInit {
       }
     }
     this.isProcessingQueue = false
+
+    if (this.depositQueue.length) await this.processQueue()
   }
 
   constructor(
