@@ -36,11 +36,15 @@ export class EthMonitorService {
     this.depositCallback = callback
   }
 
-  start() {
-    this.provider = new ethers.WebSocketProvider(`${this.configService.get('eth_wss_url')}`)
+  async start() {
+    try {
+      this.provider = new ethers.WebSocketProvider(`${this.configService.get('eth_wss_url')}`)
 
-    void this.listenEthTransfers()
-    void this.listenUsdtTransfers()
+      await this.listenEthTransfers()
+      await this.listenUsdtTransfers()
+    } catch (err) {
+      this.logger.error(`Error starting ETH monitor ${err.message}`, err)
+    }
   }
 
   private async listenEthTransfers() {
@@ -57,6 +61,8 @@ export class EthMonitorService {
     const block = await this.getBlockWithRetry(blockNumber)
     if (!block) return
 
+    const addresses = await this.getAddresses()
+
     for (const tx of block.prefetchedTransactions) {
       if (await this.redisService.isFeeTransactionHash(tx.hash)) {
         this.logger.log(`Ignoring fee transaction: ${tx.hash}`)
@@ -65,7 +71,7 @@ export class EthMonitorService {
 
       if (!tx?.to) continue
       const to = tx.to.toLowerCase()
-      if (!(await this.getAddresses()).includes(to)) continue
+      if (!addresses.includes(to)) continue
 
       const amountEth = Number(ethers.formatEther(tx.value))
       if (amountEth < this.minEthDeposit) continue
