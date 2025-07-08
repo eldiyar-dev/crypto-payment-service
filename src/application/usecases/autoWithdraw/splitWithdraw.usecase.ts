@@ -242,8 +242,8 @@ export class SplitWithdrawUseCase {
    * @returns txHash if the ETH was sent successfully, false otherwise
    */
   private async calculateAndSendEthForFee(toAddress: string, privateKey: string, amountUSDT: number) {
-    const gasPriceInEth = await this.ethInfoService.getGasPriceInEth(privateKey, toAddress, amountUSDT)
-    if (!gasPriceInEth) return false
+    // If gas price is not found, use max value 0.0007 eth
+    const gasPriceInEth = (await this.ethInfoService.getGasPriceInEth(privateKey, toAddress, amountUSDT)) ?? 0.0007
 
     this.logger.log(`Gas price in ETH for fee: ${gasPriceInEth}`)
     const txHash = await this.blockchainTransactionService.sendFunds({
