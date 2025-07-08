@@ -18,6 +18,7 @@ export class EthMonitorService {
   ) {}
 
   private readonly minEthDeposit = 0.001 // 0.001 ETH
+  private readonly minUsdtDeposit = 0.5 // 0.5 USDT
 
   private depositCallback: DepositCallback
 
@@ -38,12 +39,13 @@ export class EthMonitorService {
 
   async start() {
     try {
+      this.stop()
       this.provider = new ethers.WebSocketProvider(`${this.configService.get('eth_wss_url')}`)
 
       await this.listenEthTransfers()
       await this.listenUsdtTransfers()
     } catch (err) {
-      this.logger.error(`Error starting ETH monitor ${err.message}`, err)
+      this.logger.error(`Error starting ETH monitor`, err instanceof Error ? err.message : String(err))
     }
   }
 
@@ -52,7 +54,7 @@ export class EthMonitorService {
       try {
         await this.checkBlockForDeposits(blockNumber)
       } catch (err) {
-        this.logger.error('Error processing block', err)
+        this.logger.error('Error processing block', err instanceof Error ? err.message : String(err))
       }
     })
   }
@@ -95,15 +97,23 @@ export class EthMonitorService {
 
         // USDT has 6 decimals
         const amountUsdt = Number(ethers.formatUnits(value, 6))
-        if (!amountUsdt) return
+        if (!amountUsdt || amountUsdt < this.minUsdtDeposit) return
 
         const txHash = event.log.transactionHash
 
         this.logger.log(`Deposit detected: ${amountUsdt} USDT to ${toLower} txHash: ${txHash}`)
         this.depositCallback({ address: toLower, amount: amountUsdt, currency: Currency.USDT, txHash })
       } catch (err) {
-        this.logger.error('Error processing USDT transfer', (err as Error).message)
+        this.logger.error('Error processing USDT transfer', err instanceof Error ? err.message : String(err))
       }
     })
+  }
+
+  stop() {
+    if (this.provider) {
+      void this.provider.removeAllListeners()
+      if (typeof this.provider.destroy === 'function') void this.provider.destroy()
+    }
+    if (this.usdtContract) void this.usdtContract.removeAllListeners()
   }
 }
