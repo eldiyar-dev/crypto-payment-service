@@ -78,15 +78,17 @@ export class EthTransactionService {
 
       // calculate total gas cost
       const totalGasCost = (maxFeePerGas ?? maxPriorityFeePerGas ?? 0n) * BigInt(gasLimit)
+      const gasBuffer = (totalGasCost * 25n) / 100n
+      const totalGasWithBuffer = totalGasCost + gasBuffer
 
       // get ETH balance
       const balance = await provider.getBalance(fromAddress)
 
-      // check if there are enough funds for transfer and gas
-      if (balance < amountWei + totalGasCost) amountWei = balance - totalGasCost
+      // check if there are enough funds for transfer and gas (with buffer)
+      if (balance < amountWei + totalGasWithBuffer) amountWei = balance - totalGasWithBuffer
 
-      this.logger.log(`Sending ${ethers.formatEther(amountWei)} ETH to ${toAddress}`)
-      this.logger.log(`Fee: ${ethers.formatEther(totalGasCost)}`)
+      this.logger.log(`Sending ${ethers.formatEther(amountWei)} ETH to ${toAddress} network: ${evmNetwork}`)
+      this.logger.log(`Fee (with 25% buffer): ${ethers.formatEther(totalGasWithBuffer)} network: ${evmNetwork}`)
 
       // send transaction
       const txResponse = await wallet.sendTransaction({
