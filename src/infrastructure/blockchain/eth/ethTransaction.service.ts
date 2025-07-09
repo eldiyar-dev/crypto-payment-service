@@ -142,8 +142,8 @@ export class EthTransactionService {
       const gasPrice = maxFeePerGas ?? maxPriorityFeePerGas ?? 0n
       const totalFee = gasPrice * gasLimit
 
-      this.logger.log(`Sending ${ethers.formatUnits(amountInWei, decimals)} USDT to ${toAddress}`)
-      this.logger.log(`Fee: ${ethers.formatEther(totalFee)}`)
+      this.logger.log(`Sending ${ethers.formatUnits(amountInWei, decimals)} USDT to ${toAddress} network: ${evmNetwork}`)
+      this.logger.log(`Fee: ${ethers.formatEther(totalFee)} network: ${evmNetwork}`)
 
       const ethBalance = await provider.getBalance(fromAddress)
       if (ethBalance < totalFee) {

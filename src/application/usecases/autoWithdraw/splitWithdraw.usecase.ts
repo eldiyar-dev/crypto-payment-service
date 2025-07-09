@@ -260,12 +260,12 @@ export class SplitWithdrawUseCase {
       chain: evmNetwork,
     })
     if (!txHash) {
-      this.logger.error(`Failed to send ${gasPriceInEth} ETH for fee to ${toAddress}`)
+      this.logger.error(`Failed to send ${gasPriceInEth} ETH for fee to ${toAddress} network: ${evmNetwork}`)
       return false
     }
 
     await this.redisService.addFeeTransactionHash(txHash)
-    this.logger.log(`Send ${gasPriceInEth} ETH for fee to ${toAddress} txHash: ${txHash}`)
+    this.logger.log(`Send ${gasPriceInEth} ETH for fee to ${toAddress} network: ${evmNetwork} txHash: ${txHash}`)
     return txHash
   }
 }
