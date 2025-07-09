@@ -1,4 +1,5 @@
 import { Chain, Currency } from '@/common/enums'
+import { EvmNetwork } from '@/common/interfaces'
 import { AESCipherService } from '@/common/services/aes.service'
 import { generateUniqueAmount, sleep, splitAmountByPercentage } from '@/common/utils'
 import { Wallet } from '@/domain/entities/wallet.entity'
@@ -142,8 +143,8 @@ export class SplitWithdrawUseCase {
         return success()
       }
 
-      if (chain === Chain.ETH) {
-        const txHash = await this.calculateAndSendEthForFee(fromAddress, mainPrivateKey, amount)
+      if (chain === Chain.ETH || chain === Chain.EVM_BASE) {
+        const txHash = await this.calculateAndSendEthForFee(fromAddress, mainPrivateKey, amount, currency, chain)
         if (!txHash) return reportLog()
 
         const txHash2 = await withdrawAccount()
@@ -239,11 +240,16 @@ export class SplitWithdrawUseCase {
    * @param toAddress - Address to send the ETH to
    * @param privateKey - Private key of the wallet to send the ETH from
    * @param amountUSDT - Amount of USDT to send
+   * @param currency - Currency (e.g., Currency.USDT, Currency.ETH)
+   * @param evmNetwork - EVM network
    * @returns txHash if the ETH was sent successfully, false otherwise
    */
-  private async calculateAndSendEthForFee(toAddress: string, privateKey: string, amountUSDT: number) {
-    // If gas price is not found, use max value 0.0007 eth
-    const gasPriceInEth = (await this.ethInfoService.getGasPriceInEth(privateKey, toAddress, amountUSDT)) ?? 0.0007
+  private async calculateAndSendEthForFee(toAddress: string, privateKey: string, amount: number, currency: Currency, evmNetwork: EvmNetwork) {
+    // If gas price is not found, use max price 0.0007 eth
+    const gasPriceInEth =
+      currency === Currency.USDT
+        ? ((await this.ethInfoService.getUSDTGasPriceInEth(privateKey, toAddress, amount, evmNetwork)) ?? 0.0007)
+        : ((await this.ethInfoService.getEthTransferGasPriceInEth(privateKey, toAddress, amount, evmNetwork)) ?? 0.0007)
 
     this.logger.log(`Gas price in ETH for fee: ${gasPriceInEth}`)
     const txHash = await this.blockchainTransactionService.sendFunds({

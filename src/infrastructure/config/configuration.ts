@@ -1,3 +1,4 @@
+import { EvmCoin, EvmNetwork } from '@/common/interfaces'
 import { Wallet } from '@/domain/entities/wallet.entity'
 import type { ThrottlerModuleOptions } from '@nestjs/throttler'
 import type { TypeOrmModuleOptions } from '@nestjs/typeorm/dist'
@@ -29,18 +30,31 @@ export default () =>
     ip_whitelist: (process.env.IP_WHITELIST ?? '')?.split(','),
     api_key_secret: process.env.API_KEY_SECRET,
 
-    tron_usdt_contract_address: process.env.TRON_USDT_CONTRACT_ADDRESS,
+    tron_usdt_contract_address: 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t',
     tron_host_url: process.env.TRON_HOST_URL,
     tron_pro_api_key: process.env.TRON_PRO_API_KEY,
     tronsave_api_url: process.env.TRONSAVE_API_URL,
     tronsave_receiver_address: process.env.TRONSAVE_RECEIVER_ADDRESS,
     tronsave_api_key: process.env.TRONSAVE_API_KEY,
 
-    eth_usdt_contract_address: process.env.ETH_USDT_CONTRACT_ADDRESS,
-    eth_rpc_url: process.env.ETH_RPC_URL,
-    eth_wss_url: process.env.ETH_WSS_URL,
-
     btc_api_url: process.env.BTC_API_URL,
+
+    evmNetworks: {
+      ETH: {
+        coinContractAddress: {
+          USDT: '0xdac17f958d2ee523a2206206994597c13d831ec7',
+        },
+        rpcUrl: process.env.ETH_RPC_URL,
+        wssUrl: process.env.ETH_WSS_URL,
+      },
+      EVM_BASE: {
+        coinContractAddress: {
+          USDT: '0xfde4c96c8593536e31f229ea8f37b2ada2699bb2',
+        },
+        rpcUrl: process.env.BASE_RPC_URL,
+        wssUrl: process.env.BASE_WSS_URL,
+      },
+    },
   }
 
 export type TConfiguration = {
@@ -65,9 +79,15 @@ export type TConfiguration = {
   tronsave_receiver_address: string
   tronsave_api_key: string
 
-  eth_usdt_contract_address: string
-  eth_rpc_url: string
-  eth_wss_url: string
+  evmNetworks: {
+    [key in EvmNetwork]: {
+      coinContractAddress: {
+        [key in EvmCoin]: string
+      }
+      rpcUrl: string
+      wssUrl: string
+    }
+  }
 
   btc_api_url: string
 }

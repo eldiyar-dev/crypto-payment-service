@@ -1,4 +1,5 @@
 import { Chain, Currency } from '@/common/enums'
+import { EvmCoin, EvmNetwork } from '@/common/interfaces'
 import { Injectable } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { TConfiguration } from '../../config/configuration'
@@ -28,24 +29,34 @@ export class BlockchainTransactionService {
     return this.configService.get('tron_usdt_contract_address')!
   }
 
-  private get ethUsdtContractAddress() {
-    return this.configService.get('eth_usdt_contract_address')!
+  private evmCoinContractAddress(evmNetwork: EvmNetwork, coin: EvmCoin) {
+    return this.configService.get(`evmNetworks.${evmNetwork}.coinContractAddress.${coin}`, { infer: true })!
   }
 
   sendFunds({ currency, toAddress, amount, privateKey, chain, nonce }: TSendFunds) {
-    switch (currency) {
-      case Currency.TRX:
-        return this.tronTransactionService.sendTRX({ toAddress, amount, privateKey })
-
-      case Currency.USDT:
-        if (chain === Chain.TRON) return this.tronTransactionService.sendTRC20Token({ toAddress, amount, privateKey, contractAddress: this.tronUsdtContractAddress })
-        else return this.ethTransactionService.sendERC20Token({ toAddress, amount, privateKey, contractAddress: this.ethUsdtContractAddress, decimals: 6, nonce })
-
-      case Currency.ETH:
-        return this.ethTransactionService.sendETH({ privateKey, toAddress, amount, nonce })
-
-      case Currency.BTC:
+    switch (chain) {
+      case Chain.BTC:
         return this.btcTransactionService.sendBTC({ toAddress, amount, privateKey })
+
+      case Chain.TRON: {
+        if (currency === Currency.TRX) return this.tronTransactionService.sendTRX({ toAddress, amount, privateKey })
+        else return this.tronTransactionService.sendTRC20Token({ toAddress, amount, privateKey, contractAddress: this.tronUsdtContractAddress })
+      }
+
+      default: {
+        if (currency === Currency.ETH) return this.ethTransactionService.sendETH({ privateKey, toAddress, amount, nonce, evmNetwork: chain })
+        if (currency === Currency.USDT)
+          return this.ethTransactionService.sendERC20Token({
+            toAddress,
+            amount,
+            privateKey,
+            contractAddress: this.evmCoinContractAddress(chain, 'USDT'),
+            decimals: 6,
+            nonce,
+            evmNetwork: chain,
+            coin: 'USDT',
+          })
+      }
     }
   }
 }

@@ -8,12 +8,12 @@ export class CreateWalletDto {
   @ApiProperty({
     description: 'The wallets to create',
     isArray: true,
-    example: [{ currency: 'BTC', address: '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa', privateKey: '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa' }],
+    example: [{ chain: 'BTC', address: '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa', privateKey: '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa' }],
   })
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => PickType(Wallet, ['currency', 'address', 'privateKey']))
-  wallets: Pick<Wallet, 'currency' | 'address' | 'privateKey'>[]
+  @Type(() => PickType(Wallet, ['chain', 'address', 'privateKey']))
+  wallets: Pick<Wallet, 'chain' | 'address' | 'privateKey'>[]
 }
 
 export class CreateWalletsResponseDto extends HttpMessageDto {

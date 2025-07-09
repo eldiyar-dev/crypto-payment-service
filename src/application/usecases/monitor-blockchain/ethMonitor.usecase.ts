@@ -46,7 +46,8 @@ export class EthMonitorUseCase implements OnModuleInit {
 
     this.execute()
 
-    this.ethMonitorService.start()
+    void this.ethMonitorService.start(Chain.ETH)
+    void this.ethMonitorService.start(Chain.EVM_BASE)
   }
 
   async getDBWallets(): Promise<Wallet['address'][]> {
@@ -56,12 +57,12 @@ export class EthMonitorUseCase implements OnModuleInit {
   execute(): void {
     this.logger.log('Starting ETH monitoring...')
 
-    this.ethMonitorService.onDeposit(({ address, amount, currency, txHash }) => {
+    this.ethMonitorService.onDeposit(({ address, amount, currency, txHash, evmNetwork }) => {
       this.depositQueue.push(async () => {
-        this.logger.log(`New ETH deposit: ${address} ${amount} ${currency} txHash: ${txHash}`)
+        this.logger.log(`New ETH deposit: ${address} ${amount} ${currency} txHash: ${txHash} evmNetwork: ${evmNetwork}`)
 
-        void this.depositService.notifyNewDeposit({ currency, address, amount, txHash })
-        await this.splitWithdrawUseCase.execute({ currency, address, amount, chain: Chain.ETH })
+        void this.depositService.notifyNewDeposit({ currency, address, amount, txHash, chain: evmNetwork })
+        await this.splitWithdrawUseCase.execute({ currency, address, amount, chain: evmNetwork })
       })
       void this.processQueue()
     })

@@ -1,5 +1,6 @@
 import { StoreWalletUseCase } from '@/application/usecases/manageWallets/store-wallet.usecase'
 import { HttpMessageDto } from '@/common/dto/http.dto'
+import { Chain } from '@/common/enums'
 import { IRequest } from '@/common/interfaces/reqest.interfaces'
 import { detectBlockchainNetwork } from '@/common/utils'
 import { Wallet } from '@/domain/entities/wallet.entity'
@@ -21,7 +22,7 @@ export class WalletController {
   @ApiOkResponse({ type: CreateWalletsResponseDto })
   @Post('wallets')
   @HttpCode(HttpStatus.CREATED)
-  async createWallets(@Request() req: IRequest, @Body() body: CreateWalletDto): Promise<CreateWalletsResponseDto> {
+  createWallets(@Request() req: IRequest, @Body() body: CreateWalletDto): CreateWalletsResponseDto {
     try {
       const { clientId } = req
       this.logger.log(`post request received from clientId: ${clientId}`)
@@ -38,13 +39,16 @@ export class WalletController {
           continue
         }
 
-        validWallets.push({
-          ...wallet,
-          chain,
-        })
+        // If the chain is not ETH or the chain is not the same as the wallet chain, then it is invalid
+        if (chain !== Chain.ETH && chain !== wallet.chain) {
+          invalidWallets.push(wallet.address)
+          continue
+        }
+
+        validWallets.push(wallet)
       }
 
-      if (validWallets.length) await this.storeWalletUseCase.addWallets(validWallets)
+      if (validWallets.length) this.storeWalletUseCase.addWallets(validWallets)
 
       if (invalidWallets.length) {
         return {

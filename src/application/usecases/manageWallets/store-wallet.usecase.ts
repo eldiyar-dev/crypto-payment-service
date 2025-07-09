@@ -15,7 +15,7 @@ export class StoreWalletUseCase {
 
   addWallets(wallets: Wallet[]) {
     const lowerCaseWallets = wallets.map((wallet) => {
-      if (wallet.chain === Chain.ETH || wallet.chain === Chain.BTC) {
+      if ([Chain.ETH, Chain.BTC, Chain.EVM_BASE].includes(wallet.chain)) {
         return {
           ...wallet,
           address: wallet.address.toLowerCase(),
@@ -25,14 +25,10 @@ export class StoreWalletUseCase {
     })
 
     lowerCaseWallets.forEach((wallet) => {
-      if (wallet.chain === Chain.ETH) void this.redisService.addAddress(Chain.ETH, wallet.address)
-
       if (wallet.chain === Chain.BTC) {
         void this.redisService.addAddress(Chain.BTC, wallet.address)
         this.btcMonitorService.addAddress(wallet.address)
-      }
-
-      if (wallet.chain === Chain.TRON) void this.redisService.addAddress(Chain.TRON, wallet.address)
+      } else void this.redisService.addAddress(wallet.chain, wallet.address)
 
       void this.walletRepository.createEntity(wallet)
     })

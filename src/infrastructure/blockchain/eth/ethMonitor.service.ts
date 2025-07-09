@@ -1,4 +1,5 @@
 import { Chain, Currency } from '@/common/enums'
+import { EvmCoin, EvmNetwork } from '@/common/interfaces'
 import { withRetry } from '@/common/utils'
 import { RedisService } from '@/infrastructure/redis/redis.service'
 import { Injectable, Logger } from '@nestjs/common'
@@ -6,7 +7,7 @@ import { ConfigService } from '@nestjs/config'
 import { ContractEventPayload, ethers } from 'ethers'
 import { TConfiguration } from '../../config/configuration'
 
-type DepositCallback = (data: { address: string; amount: number; currency: Currency; txHash: string }) => void
+type DepositCallback = (data: { address: string; amount: number; currency: Currency; txHash: string; evmNetwork: EvmNetwork }) => void
 
 @Injectable()
 export class EthMonitorService {
@@ -27,7 +28,6 @@ export class EthMonitorService {
     return addresses.map((address) => address.toLowerCase())
   }
 
-  private provider: ethers.WebSocketProvider
   private usdtContract: ethers.Contract
 
   // ERC20 ABI for Transfer event
@@ -37,33 +37,44 @@ export class EthMonitorService {
     this.depositCallback = callback
   }
 
-  async start() {
-    try {
-      this.stop()
-      this.provider = new ethers.WebSocketProvider(`${this.configService.get('eth_wss_url')}`)
+  private getProviderWssUrl(evmNetwork: EvmNetwork) {
+    return this.configService.get(`evmNetworks.${evmNetwork}.wssUrl`, { infer: true })!
+  }
 
-      await this.listenEthTransfers()
-      await this.listenUsdtTransfers()
+  private getCoinContractAddress(evmNetwork: EvmNetwork, coin: EvmCoin) {
+    return this.configService.get(`evmNetworks.${evmNetwork}.coinContractAddress.${coin}`, { infer: true })!
+  }
+
+  async start(evmNetwork: EvmNetwork) {
+    try {
+      const provider = new ethers.WebSocketProvider(this.getProviderWssUrl(evmNetwork))
+
+      await this.listenEthTransfers(provider, evmNetwork)
+
+      this.usdtContract = new ethers.Contract(this.getCoinContractAddress(evmNetwork, 'USDT'), this.ERC20_ABI, provider)
+      await this.listenUsdtTransfers(this.usdtContract, evmNetwork)
     } catch (err) {
-      this.logger.error(`Error starting ETH monitor`, err instanceof Error ? err.message : String(err))
+      this.logger.error(`Error starting ETH monitor network: ${evmNetwork} ${err instanceof Error ? err.message : String(err)}`, err)
     }
   }
 
-  private async listenEthTransfers() {
-    await this.provider.on('block', async (blockNumber: number) => {
+  private async listenEthTransfers(provider: ethers.WebSocketProvider, evmNetwork: EvmNetwork) {
+    await provider.on('block', async (blockNumber: number) => {
+      const networkName = provider._network.name
       try {
-        this.logger.log(`Checking block ${blockNumber}`)
-        await this.checkBlockForDeposits(blockNumber)
+        this.logger.log(`Checking block ${blockNumber} network: ${networkName}`)
+        await this.checkBlockForDeposits(provider, blockNumber, evmNetwork)
       } catch (err) {
-        this.logger.error('Error processing block', err instanceof Error ? err.message : String(err))
+        this.logger.error(`Error processing block network: ${networkName} ${err instanceof Error ? err.message : String(err)}`, err)
       }
     })
   }
 
-  private async checkBlockForDeposits(blockNumber: number) {
-    const block = await this.getBlockWithRetry(blockNumber)
+  private async checkBlockForDeposits(provider: ethers.WebSocketProvider, blockNumber: number, evmNetwork: EvmNetwork) {
+    const networkName = provider._network.name
+    const block = await this.getBlockWithRetry(provider, blockNumber)
     if (!block) {
-      this.logger.error(`Block ${blockNumber} not found`)
+      this.logger.error(`Block ${blockNumber} not found network: ${networkName}`)
       return
     }
 
@@ -76,7 +87,7 @@ export class EthMonitorService {
       }
 
       if (!tx?.to) {
-        this.logger.log(`Transaction ${tx.hash} has no to address`)
+        this.logger.log(`Transaction ${tx.hash} has no to address network: ${networkName}`)
         continue
       }
       const to = tx.to.toLowerCase()
@@ -85,19 +96,17 @@ export class EthMonitorService {
       const amountEth = Number(ethers.formatEther(tx.value))
       if (amountEth < this.minEthDeposit) continue
 
-      this.logger.log(`Deposit detected: ${amountEth} ETH to ${to} txHash: ${tx.hash}`)
-      this.depositCallback({ address: to, amount: amountEth, currency: Currency.ETH, txHash: tx.hash })
+      this.logger.log(`Deposit detected: ${amountEth} ETH from ${tx.from} to ${to} txHash: ${tx.hash} network: ${networkName}`)
+      this.depositCallback({ address: to, amount: amountEth, currency: Currency.ETH, txHash: tx.hash, evmNetwork })
     }
   }
 
-  private async getBlockWithRetry(blockNumber: number): Promise<ethers.Block | null> {
-    return withRetry(() => this.provider.getBlock(blockNumber, true))
+  private async getBlockWithRetry(provider: ethers.WebSocketProvider, blockNumber: number): Promise<ethers.Block | null> {
+    return withRetry(() => provider.getBlock(blockNumber, true))
   }
 
-  private async listenUsdtTransfers() {
-    this.usdtContract = new ethers.Contract(this.configService.get('eth_usdt_contract_address')!, this.ERC20_ABI, this.provider)
-
-    await this.usdtContract.on('Transfer', async (from: string, to: string, value: ethers.BigNumberish, event: ContractEventPayload) => {
+  private async listenUsdtTransfers(usdtContract: ethers.Contract, evmNetwork: EvmNetwork) {
+    await usdtContract.on('Transfer', async (from: string, to: string, value: ethers.BigNumberish, event: ContractEventPayload) => {
       try {
         const toLower = to.toLowerCase()
         if (!(await this.getAddresses()).includes(toLower)) return
@@ -108,19 +117,11 @@ export class EthMonitorService {
 
         const txHash = event.log.transactionHash
 
-        this.logger.log(`Deposit detected: ${amountUsdt} USDT to ${toLower} txHash: ${txHash}`)
-        this.depositCallback({ address: toLower, amount: amountUsdt, currency: Currency.USDT, txHash })
+        this.logger.log(`Deposit detected: ${amountUsdt} USDT from ${from} to ${toLower} txHash: ${txHash} network: ${evmNetwork}`)
+        this.depositCallback({ address: toLower, amount: amountUsdt, currency: Currency.USDT, txHash, evmNetwork })
       } catch (err) {
-        this.logger.error('Error processing USDT transfer', err instanceof Error ? err.message : String(err))
+        this.logger.error(`Error processing USDT transfer network: ${evmNetwork} ${err instanceof Error ? err.message : String(err)}`)
       }
     })
-  }
-
-  stop() {
-    if (this.provider) {
-      void this.provider.removeAllListeners()
-      if (typeof this.provider.destroy === 'function') void this.provider.destroy()
-    }
-    if (this.usdtContract) void this.usdtContract.removeAllListeners()
   }
 }

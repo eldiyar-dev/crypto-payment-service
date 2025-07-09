@@ -1,6 +1,5 @@
-import { Chain, Currency } from '@/common/enums'
+import { Chain } from '@/common/enums'
 import { ApiProperty } from '@nestjs/swagger'
-import { Transform } from 'class-transformer'
 import { IsEnum, IsPositive, IsString } from 'class-validator'
 import { Column, CreateDateColumn, DeleteDateColumn, Entity, PrimaryGeneratedColumn, Unique, UpdateDateColumn } from 'typeorm'
 
@@ -11,12 +10,6 @@ export class Wallet {
   @IsPositive()
   @PrimaryGeneratedColumn()
   id?: number
-
-  @ApiProperty({ enum: Currency })
-  @IsEnum(Currency)
-  @Column({ type: String, enum: Currency })
-  @Transform(({ value }) => value.toString().toUpperCase())
-  currency: Currency
 
   @ApiProperty()
   @IsString()
