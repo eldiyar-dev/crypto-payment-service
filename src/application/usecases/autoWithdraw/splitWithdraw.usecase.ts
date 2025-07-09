@@ -257,7 +257,7 @@ export class SplitWithdrawUseCase {
       toAddress,
       amount: gasPriceInEth + 0.0001,
       privateKey,
-      chain: Chain.ETH,
+      chain: evmNetwork,
     })
     if (!txHash) {
       this.logger.error(`Failed to send ${gasPriceInEth} ETH for fee to ${toAddress}`)
