@@ -3,7 +3,7 @@ import { ApiProperty } from '@nestjs/swagger'
 import { IsEnum, IsPositive, IsString } from 'class-validator'
 import { Column, CreateDateColumn, DeleteDateColumn, Entity, PrimaryGeneratedColumn, Unique, UpdateDateColumn } from 'typeorm'
 
-@Unique(['address'])
+@Unique(['address', 'chain'])
 @Entity()
 export class Wallet {
   @ApiProperty()
@@ -13,7 +13,7 @@ export class Wallet {
 
   @ApiProperty()
   @IsString()
-  @Column({ type: String, unique: true })
+  @Column({ type: String })
   address: string
 
   @ApiProperty()
