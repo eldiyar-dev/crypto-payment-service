@@ -54,6 +54,48 @@ export default () =>
         rpcUrl: process.env.BASE_RPC_URL,
         wssUrl: process.env.BASE_WSS_URL,
       },
+      EVM_BSC: {
+        coinContractAddress: {
+          USDT: '0x55d398326f99059ff775485246999027b3197955',
+        },
+        rpcUrl: process.env.BSC_RPC_URL,
+        wssUrl: process.env.BSC_WSS_URL,
+      },
+      EVM_POLYGON: {
+        coinContractAddress: {
+          USDT: '0xc2132d05d31c914a87c6611c10748aeb04b58e8f',
+        },
+        rpcUrl: process.env.POLYGON_RPC_URL,
+        wssUrl: process.env.POLYGON_WSS_URL,
+      },
+      EVM_ARBITRUM: {
+        coinContractAddress: {
+          USDT: '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9',
+        },
+        rpcUrl: process.env.ARBITRUM_RPC_URL,
+        wssUrl: process.env.ARBITRUM_WSS_URL,
+      },
+      EVM_OPTIMISM: {
+        coinContractAddress: {
+          USDT: '0x94b008aa00579c1307b0ef2c499ad98a8ce58e58',
+        },
+        rpcUrl: process.env.OPTIMISM_RPC_URL,
+        wssUrl: process.env.OPTIMISM_WSS_URL,
+      },
+      EVM_AVALANCHE_C: {
+        coinContractAddress: {
+          USDT: '0xc7198437980c041c805a1edcba50c1ce5db95118',
+        },
+        rpcUrl: process.env.AVALANCHE_C_RPC_URL,
+        wssUrl: process.env.AVALANCHE_C_WSS_URL,
+      },
+      EVM_FANTOM: {
+        coinContractAddress: {
+          USDT: '0x049d68029688eabf473097a2fc38ef61d3530b6e',
+        },
+        rpcUrl: process.env.FANTOM_RPC_URL,
+        wssUrl: process.env.FANTOM_WSS_URL,
+      },
     },
   }
 

@@ -1,7 +1,7 @@
 import { Chain, Currency } from '@/common/enums'
 import { EvmNetwork } from '@/common/interfaces'
 import { AESCipherService } from '@/common/services/aes.service'
-import { generateUniqueAmount, sleep, splitAmountByPercentage } from '@/common/utils'
+import { generateUniqueAmount, isEvmNetwork, sleep, splitAmountByPercentage } from '@/common/utils'
 import { Wallet } from '@/domain/entities/wallet.entity'
 import { WalletRepository } from '@/domain/repositories/walletRepository'
 import { EthInfoService } from '@/infrastructure/blockchain/eth/ethInfo.service'
@@ -143,7 +143,7 @@ export class SplitWithdrawUseCase {
         return success()
       }
 
-      if (chain === Chain.ETH || chain === Chain.EVM_BASE) {
+      if (isEvmNetwork(chain)) {
         const txHash = await this.calculateAndSendEthForFee(fromAddress, mainPrivateKey, amount, currency, chain)
         if (!txHash) return reportLog()
 

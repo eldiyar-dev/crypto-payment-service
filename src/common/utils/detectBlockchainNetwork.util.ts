@@ -1,4 +1,5 @@
 import { Chain } from '@/common/enums'
+import { EvmNetwork } from '../interfaces'
 
 /**
  * Detects the blockchain network type based on a cryptocurrency address.
@@ -46,4 +47,20 @@ export const detectBlockchainNetwork = (address: string): Chain | null => {
   }
 
   return null
+}
+
+/**
+ * Checks if the provided chain is an EVM-compatible network.
+ *
+ * @param chain - The blockchain network to check (Chain enum)
+ * @returns True if the chain is an EVM-compatible network, false otherwise
+ *
+ * @example
+ * isEvmNetwork(Chain.ETH) // true
+ * isEvmNetwork(Chain.BTC) // false
+ */
+export const isEvmNetwork = (chain: Chain): chain is EvmNetwork => {
+  return [Chain.ETH, Chain.EVM_BASE, Chain.EVM_BSC, Chain.EVM_POLYGON, Chain.EVM_ARBITRUM, Chain.EVM_OPTIMISM, Chain.EVM_AVALANCHE_C, Chain.EVM_FANTOM].includes(
+    chain as EvmNetwork,
+  )
 }

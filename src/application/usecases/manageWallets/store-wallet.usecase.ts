@@ -1,4 +1,5 @@
 import { Chain } from '@/common/enums'
+import { isEvmNetwork } from '@/common/utils'
 import { Wallet } from '@/domain/entities/wallet.entity'
 import { WalletRepository } from '@/domain/repositories/walletRepository'
 import { BtcMonitorService } from '@/infrastructure/blockchain/btc/btcMonitor.service'
@@ -15,7 +16,7 @@ export class StoreWalletUseCase {
 
   addWallets(wallets: Wallet[]) {
     const lowerCaseWallets = wallets.map((wallet) => {
-      if ([Chain.ETH, Chain.BTC, Chain.EVM_BASE].includes(wallet.chain)) {
+      if (isEvmNetwork(wallet.chain) || wallet.chain === Chain.BTC) {
         return {
           ...wallet,
           address: wallet.address.toLowerCase(),
