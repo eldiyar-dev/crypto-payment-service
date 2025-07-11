@@ -1,4 +1,4 @@
-import { Chain } from '@/common/enums'
+import { Chain, EVM_CHAINS } from '@/common/enums'
 import { EvmNetwork } from '../interfaces'
 
 /**
@@ -60,7 +60,5 @@ export const detectBlockchainNetwork = (address: string): Chain | null => {
  * isEvmNetwork(Chain.BTC) // false
  */
 export const isEvmNetwork = (chain: Chain): chain is EvmNetwork => {
-  return [Chain.ETH, Chain.EVM_BASE, Chain.EVM_BSC, Chain.EVM_POLYGON, Chain.EVM_ARBITRUM, Chain.EVM_OPTIMISM, Chain.EVM_AVALANCHE_C, Chain.EVM_FANTOM].includes(
-    chain as EvmNetwork,
-  )
+  return EVM_CHAINS.includes(chain)
 }

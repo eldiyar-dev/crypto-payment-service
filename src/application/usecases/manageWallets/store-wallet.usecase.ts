@@ -1,4 +1,4 @@
-import { Chain } from '@/common/enums'
+import { Chain, EVM_CHAINS } from '@/common/enums'
 import { isEvmNetwork } from '@/common/utils'
 import { Wallet } from '@/domain/entities/wallet.entity'
 import { WalletRepository } from '@/domain/repositories/walletRepository'
@@ -25,7 +25,17 @@ export class StoreWalletUseCase {
       return wallet
     })
 
+    const dublicateEVMWallets: Wallet[] = []
     lowerCaseWallets.forEach((wallet) => {
+      if (wallet.chain !== Chain.ETH) return
+
+      EVM_CHAINS.forEach((chain) => {
+        if (chain === Chain.ETH) return
+        dublicateEVMWallets.push({ ...wallet, chain })
+      })
+    })
+
+    lowerCaseWallets.concat(dublicateEVMWallets).forEach((wallet) => {
       if (wallet.chain === Chain.BTC) {
         void this.redisService.addAddress(Chain.BTC, wallet.address)
         this.btcMonitorService.addAddress(wallet.address)

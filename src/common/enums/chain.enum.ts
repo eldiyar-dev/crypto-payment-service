@@ -10,3 +10,14 @@ export enum Chain {
   EVM_AVALANCHE_C = 'EVM_AVALANCHE_C',
   EVM_FANTOM = 'EVM_FANTOM',
 }
+
+export const EVM_CHAINS: Chain[] = [
+  Chain.ETH,
+  Chain.EVM_BASE,
+  Chain.EVM_BSC,
+  Chain.EVM_POLYGON,
+  Chain.EVM_ARBITRUM,
+  Chain.EVM_OPTIMISM,
+  Chain.EVM_AVALANCHE_C,
+  Chain.EVM_FANTOM,
+] as const

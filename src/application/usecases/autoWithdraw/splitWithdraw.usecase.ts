@@ -51,7 +51,7 @@ export class SplitWithdrawUseCase {
   async execute({ currency, address, amount, chain }: TWithdrawParams) {
     try {
       // Get withdrawal wallets and pie
-      const withdrawData = await this.withdrawService.getWithdrawWallets(chain, currency, address)
+      const withdrawData = await this.withdrawService.getWithdrawWallets(chain, address)
       if (!withdrawData) {
         this.logger.error(`Failed to get withdrawal wallets for ${address}`)
         void this.reportService.sendReport({ currency, address, amount, message: `Failed to get withdrawal wallets for ${address}` })

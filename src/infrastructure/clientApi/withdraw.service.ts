@@ -1,4 +1,5 @@
-import { Chain, Currency } from '@/common/enums'
+import { Chain } from '@/common/enums'
+import { isEvmNetwork } from '@/common/utils'
 import type { TConfiguration } from '@/infrastructure/config/configuration'
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
@@ -23,12 +24,12 @@ export class WithdrawService {
 
   constructor(private readonly configService: ConfigService<TConfiguration>) {}
 
-  async getWithdrawWallets(chain: Chain, currency: Currency, address: string): Promise<TWithdrawWalletsResponseData | null> {
+  async getWithdrawWallets(chain: Chain, address: string): Promise<TWithdrawWalletsResponseData | null> {
     try {
-      this.logger.log({ currency: chain, address })
+      this.logger.log(`Getting withdraw wallets for ${address} on ${chain}`)
       const baseUrl = this.configService.get('client_api_url')
       const response = await axios.get<TWithdrawWalletsResponse>(`${baseUrl}/api/withdraw_wallets/`, {
-        params: { currency: chain, address },
+        params: { currency: isEvmNetwork(chain) ? Chain.ETH : chain, address },
       })
       return {
         ...response.data,
