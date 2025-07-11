@@ -23,6 +23,7 @@ export default () =>
     redis: {
       port: +process.env.REDIS_PORT!,
       host: process.env.REDIS_HOST,
+      password: process.env.REDIS_PASSWORD,
     },
     throttler: [{ ttl: 60000, limit: 10 }],
     client_api_url: process.env.CLIENT_API_URL,
@@ -107,7 +108,7 @@ export type TConfiguration = {
   backHostUrl: string
   swaggerPass: string
   postgres: TypeOrmModuleOptions
-  redis: { port: RedisOptions['port']; host: RedisOptions['host'] }
+  redis: { port: RedisOptions['port']; host: RedisOptions['host']; password: RedisOptions['password'] }
   throttler: ThrottlerModuleOptions
   client_api_url: string
   private_key_secret: string
