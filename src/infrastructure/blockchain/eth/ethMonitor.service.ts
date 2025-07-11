@@ -59,7 +59,7 @@ export class EthMonitorService {
   }
 
   private async listenEthTransfers(provider: ethers.WebSocketProvider, evmNetwork: EvmNetwork) {
-    await provider.on('block', async (blockNumber: number) => {
+    return provider.on('block', async (blockNumber: number) => {
       try {
         this.logger.log(`Checking block ${blockNumber} network: ${evmNetwork}`)
         await this.checkBlockForDeposits(provider, blockNumber, evmNetwork)
@@ -104,7 +104,7 @@ export class EthMonitorService {
   }
 
   private async listenUsdtTransfers(usdtContract: ethers.Contract, evmNetwork: EvmNetwork) {
-    await usdtContract.on('Transfer', async (from: string, to: string, value: ethers.BigNumberish, event: ContractEventPayload) => {
+    return usdtContract.on('Transfer', async (from: string, to: string, value: ethers.BigNumberish, event: ContractEventPayload) => {
       try {
         const toLower = to.toLowerCase()
         if (!(await this.getAddresses()).includes(toLower)) return
