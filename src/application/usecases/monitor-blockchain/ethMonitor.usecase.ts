@@ -47,13 +47,13 @@ export class EthMonitorUseCase implements OnModuleInit {
     this.execute()
 
     void this.ethMonitorService.start(Chain.ETH)
-    void this.ethMonitorService.start(Chain.EVM_BASE)
-    void this.ethMonitorService.start(Chain.EVM_BSC)
-    void this.ethMonitorService.start(Chain.EVM_POLYGON)
-    void this.ethMonitorService.start(Chain.EVM_ARBITRUM)
-    void this.ethMonitorService.start(Chain.EVM_OPTIMISM)
-    void this.ethMonitorService.start(Chain.EVM_AVALANCHE_C)
-    void this.ethMonitorService.start(Chain.EVM_FANTOM)
+    // void this.ethMonitorService.start(Chain.EVM_BASE)
+    // void this.ethMonitorService.start(Chain.EVM_BSC)
+    // void this.ethMonitorService.start(Chain.EVM_POLYGON)
+    // void this.ethMonitorService.start(Chain.EVM_ARBITRUM)
+    // void this.ethMonitorService.start(Chain.EVM_OPTIMISM)
+    // void this.ethMonitorService.start(Chain.EVM_AVALANCHE_C)
+    // void this.ethMonitorService.start(Chain.EVM_FANTOM)
   }
 
   async getDBWallets(): Promise<Wallet['address'][]> {
