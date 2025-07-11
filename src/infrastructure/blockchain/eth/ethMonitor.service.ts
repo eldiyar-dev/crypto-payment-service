@@ -60,21 +60,19 @@ export class EthMonitorService {
 
   private async listenEthTransfers(provider: ethers.WebSocketProvider, evmNetwork: EvmNetwork) {
     await provider.on('block', async (blockNumber: number) => {
-      const networkName = provider._network.name
       try {
-        this.logger.log(`Checking block ${blockNumber} network: ${networkName}`)
+        this.logger.log(`Checking block ${blockNumber} network: ${evmNetwork}`)
         await this.checkBlockForDeposits(provider, blockNumber, evmNetwork)
       } catch (err) {
-        this.logger.error(`Error processing block network: ${networkName} ${err instanceof Error ? err.message : String(err)}`, err)
+        this.logger.error(`Error processing block network: ${evmNetwork} ${err instanceof Error ? err.message : String(err)}`, err)
       }
     })
   }
 
   private async checkBlockForDeposits(provider: ethers.WebSocketProvider, blockNumber: number, evmNetwork: EvmNetwork) {
-    const networkName = provider._network.name
     const block = await this.getBlockWithRetry(provider, blockNumber)
     if (!block) {
-      this.logger.error(`Block ${blockNumber} not found network: ${networkName}`)
+      this.logger.error(`Block ${blockNumber} not found network: ${evmNetwork}`)
       return
     }
 
@@ -87,7 +85,7 @@ export class EthMonitorService {
       }
 
       if (!tx?.to) {
-        this.logger.log(`Transaction ${tx.hash} has no to address network: ${networkName}`)
+        this.logger.log(`Transaction ${tx.hash} has no to address network: ${evmNetwork}`)
         continue
       }
       const to = tx.to.toLowerCase()
@@ -96,7 +94,7 @@ export class EthMonitorService {
       const amountEth = Number(ethers.formatEther(tx.value))
       if (amountEth < this.minEthDeposit) continue
 
-      this.logger.log(`Deposit detected: ${amountEth} ETH from ${tx.from} to ${to} txHash: ${tx.hash} network: ${networkName}`)
+      this.logger.log(`Deposit detected: ${amountEth} ETH from ${tx.from} to ${to} txHash: ${tx.hash} network: ${evmNetwork}`)
       this.depositCallback({ address: to, amount: amountEth, currency: Currency.ETH, txHash: tx.hash, evmNetwork })
     }
   }
