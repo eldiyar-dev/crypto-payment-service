@@ -13,7 +13,6 @@ export class RedisService {
   }
 
   async addAddress(chain: Chain, address: string | string[]) {
-    this.logger.log(`Adding ${chain} address ${address.toString()}`)
     await this.redisRepository.setArray(`${chain}:address`, Array.isArray(address) ? address : [address])
   }
 
