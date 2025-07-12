@@ -89,6 +89,7 @@ export class TronMonitorService {
           this.logger.error(`Block ${blockNum} transactions not found`)
           continue
         }
+        this.logger.log(`Processing block ${blockNum}`)
 
         for (const tx of block.transactions) {
           try {
