@@ -54,30 +54,35 @@ export class BtcInfoService {
   }
 
   async getBlockByHeightAllPages(height: number): Promise<AnkrTransaction[]> {
-    try {
-      const url = `${this.baseUrl}/api/v2/block/${height}`
-      const { data } = await axios.get<AnkrBlock>(url)
-      if (!data?.txs) return []
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const url = `${this.baseUrl}/api/v2/block/${height}`
+        const { data } = await axios.get<AnkrBlock>(url, { timeout: 10000 })
+        if (!data?.txs) return []
 
-      let allTxs = [...data.txs]
-      const totalPages = data.totalPages || 1
+        let allTxs = [...data.txs]
+        const totalPages = data.totalPages || 1
 
-      if (totalPages <= 1) return allTxs
+        if (totalPages <= 1) return allTxs
 
-      const requests = Array.from({ length: totalPages - 1 }, (_, i) => axios.get<AnkrBlock>(`${url}?page=${i + 2}`))
+        const requests = Array.from({ length: totalPages - 1 }, (_, i) => axios.get<AnkrBlock>(`${url}?page=${i + 2}`))
 
-      const responses = await Promise.all(requests)
-      for (const { data } of responses) {
-        if (!data?.txs?.length) continue
+        const responses = await Promise.all(requests)
+        for (const { data } of responses) {
+          if (!data?.txs?.length) continue
 
-        allTxs = allTxs.concat(data.txs)
+          allTxs = allTxs.concat(data.txs)
+        }
+
+        return allTxs
+      } catch (error) {
+        const axiosError = error as AxiosError
+        this.logger.error(`Attempt ${attempt}: Failed to get all block pages for height ${height}: ${axiosError.message}, code: ${axiosError.code}, url: ${axiosError.config?.url}`)
+        if (attempt === 3) return []
+        await new Promise((res) => setTimeout(res, 1000 * attempt))
       }
-
-      return allTxs
-    } catch (error) {
-      this.logger.error(`Failed to get all block pages for height ${height}: ${(error as Error).message}`)
-      return []
     }
+    return []
   }
 
   async getUTXOs(address: string): Promise<UTXO[]> {
