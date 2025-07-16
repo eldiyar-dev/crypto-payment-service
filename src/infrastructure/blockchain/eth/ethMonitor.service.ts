@@ -49,6 +49,7 @@ export class EthMonitorService {
     try {
       const provider = new ethers.WebSocketProvider(this.getProviderWssUrl(evmNetwork))
 
+      provider.websocket.onerror = (err) => this.logger.error(`WebSocket error: ${err.message}`)
       await this.listenEthTransfers(provider, evmNetwork)
 
       this.usdtContract = new ethers.Contract(this.getCoinContractAddress(evmNetwork, 'USDT'), this.ERC20_ABI, provider)
