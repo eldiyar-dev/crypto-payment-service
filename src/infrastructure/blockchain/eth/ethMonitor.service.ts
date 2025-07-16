@@ -49,8 +49,20 @@ export class EthMonitorService {
     try {
       const provider = new ethers.WebSocketProvider(this.getProviderWssUrl(evmNetwork))
 
-      void provider.on('error', (err) => this.logger.error(`WebSocketProvider error: ${err.message}`, err))
-      provider.websocket.onerror = (err) => this.logger.error(`WebSocket error: ${err.message}`, err)
+      const reconnect = async () => {
+        await provider.removeAllListeners()
+        await provider.destroy()
+        await this.start(evmNetwork)
+      }
+
+      void provider.on('error', async (err) => {
+        this.logger.error(`WebSocketProvider error: ${err.message}`, err)
+        await reconnect()
+      })
+      provider.websocket.onerror = async (err) => {
+        this.logger.error(`WebSocket error: ${err.message}`, err)
+        await reconnect()
+      }
 
       await this.listenEthTransfers(provider, evmNetwork)
 
