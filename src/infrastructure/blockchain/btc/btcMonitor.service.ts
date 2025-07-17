@@ -25,14 +25,6 @@ export class BtcMonitorService {
     this.depositCallback = callback
   }
 
-  addAddress(address: string) {
-    try {
-      this.logger.log(`Added address ${address} to monitor`)
-    } catch (error) {
-      this.logger.error(`Error adding address ${address} to monitor ${(error as Error).message}`)
-    }
-  }
-
   async getAddresses(): Promise<string[]> {
     return this.redisService.getAddresses(Chain.BTC)
   }

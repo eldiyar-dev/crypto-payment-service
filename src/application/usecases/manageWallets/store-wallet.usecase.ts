@@ -4,10 +4,12 @@ import { Wallet } from '@/domain/entities/wallet.entity'
 import { WalletRepository } from '@/domain/repositories/walletRepository'
 import { BtcMonitorService } from '@/infrastructure/blockchain/btc/btcMonitor.service'
 import { RedisService } from '@/infrastructure/redis/redis.service'
-import { Injectable } from '@nestjs/common'
+import { Injectable, Logger } from '@nestjs/common'
 
 @Injectable()
 export class StoreWalletUseCase {
+  private readonly logger = new Logger(StoreWalletUseCase.name)
+
   constructor(
     private readonly walletRepository: WalletRepository,
     private readonly redisService: RedisService,
@@ -36,10 +38,8 @@ export class StoreWalletUseCase {
     })
 
     lowerCaseWallets.concat(dublicateEVMWallets).forEach((wallet) => {
-      if (wallet.chain === Chain.BTC) {
-        void this.redisService.addAddress(Chain.BTC, wallet.address)
-        this.btcMonitorService.addAddress(wallet.address)
-      } else void this.redisService.addAddress(wallet.chain, wallet.address)
+      this.logger.log(`Adding address ${wallet.address} to ${wallet.chain}`)
+      void this.redisService.addAddress(wallet.chain, wallet.address)
 
       void this.walletRepository.createEntity(wallet)
     })
