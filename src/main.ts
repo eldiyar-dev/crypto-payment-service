@@ -10,10 +10,15 @@ import helmet from 'helmet'
 import { HttpMessageDto } from './common/dto/http.dto'
 import { TConfiguration } from './infrastructure/config/configuration'
 import { winstonConfig } from './infrastructure/config/logger.config'
+import { validateEnv } from './infrastructure/config/validateEnv'
 import { TrimPipe } from './presentation/pipes/trim.pipe'
 
 async function bootstrap() {
   const logger = new Logger()
+
+  // Before anything connects: a missing secret must fail here, not surface as `undefined`
+  // inside a withdrawal.
+  validateEnv(logger)
 
   const app = await NestFactory.create(AppModule, {
     logger: winstonConfig,
@@ -49,17 +54,23 @@ async function bootstrap() {
     new TrimPipe(),
   )
 
-  app.use(
-    ['/swagger'],
-    basicAuth({
-      challenge: true,
-      users: { admin: swaggerPass },
-    }),
-  )
+  // express-basic-auth with `users: { admin: undefined }` does not reliably reject — rather
+  // than depend on that, the docs are simply not mounted without a password.
+  if (!swaggerPass) {
+    logger.warn('SWAGGER_PASS is not set — /swagger will not be exposed')
+  } else {
+    app.use(
+      ['/swagger'],
+      basicAuth({
+        challenge: true,
+        users: { admin: swaggerPass },
+      }),
+    )
+  }
 
   const config = new DocumentBuilder().setTitle('LLC Crypto API').setDescription('The API description').setVersion('1.0').addBearerAuth().build()
   const document = SwaggerModule.createDocument(app, config, { extraModels: [HttpMessageDto] })
-  SwaggerModule.setup('swagger', app, document)
+  if (swaggerPass) SwaggerModule.setup('swagger', app, document)
 
   // Writing the spec to the working directory on every boot fails outright on a read-only
   // container filesystem, taking the service down before it can listen. It is a build-time
