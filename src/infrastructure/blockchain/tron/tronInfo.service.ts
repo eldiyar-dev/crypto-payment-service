@@ -61,19 +61,40 @@ export class TronInfoService {
   }
 
   /**
-   * Wait for a Tron transaction to be confirmed
+   * Wait for a Tron transaction to be mined AND to have succeeded.
+   *
+   * A mined transaction is not a successful one: a TRC20 transfer that runs out of energy is
+   * included in a block with `receipt.result = 'OUT_OF_ENERGY'`. Treating any `blockNumber` as
+   * confirmation reported reverted transfers as completed withdrawals. Native TRX transfers
+   * carry no `receipt.result`, so its absence is treated as success.
+   *
+   * Transient RPC errors are tolerated: previously an exception inside the loop aborted the
+   * whole wait, which the caller could not distinguish from a genuine failure.
+   *
    * @param txHash - The hash of the transaction to wait for
-   * @param maxAttempts - The maximum number of attempts to wait for the transaction to be confirmed
-   * @returns The block number of the confirmed transaction
+   * @param maxAttempts - Maximum one-second polls before giving up
+   * @returns The block number if the transaction succeeded, null if it reverted or timed out
    */
   async waitForTronTxConfirmation(txHash: string, maxAttempts = 1_200): Promise<number | null> {
-    let attempts = 0
-    while (attempts < maxAttempts) {
-      const txInfo = await this.tronWeb.trx.getTransactionInfo(txHash)
-      if (txInfo?.blockNumber) return txInfo.blockNumber
+    for (let attempts = 0; attempts < maxAttempts; attempts++) {
+      try {
+        const txInfo = await this.tronWeb.trx.getTransactionInfo(txHash)
+
+        if (txInfo?.blockNumber) {
+          const result = txInfo.receipt?.result
+          if (result && result !== 'SUCCESS') {
+            this.logger.error(`Transaction ${txHash} was mined but failed on-chain: ${result}`)
+            return null
+          }
+          return txInfo.blockNumber
+        }
+      } catch (error) {
+        this.logger.debug(`Polling ${txHash} failed, retrying: ${(error as Error).message}`)
+      }
+
       await sleep(1_000)
-      attempts++
     }
+
     this.logger.error(`Transaction ${txHash} not confirmed in time`)
     return null
   }

@@ -2,6 +2,7 @@ import { TConfiguration } from '@/infrastructure/config/configuration'
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { TronWeb } from 'tronweb'
+import { TronInfoService } from './tronInfo.service'
 
 type SendTRC20TokenParams = {
   toAddress: string
@@ -22,7 +23,16 @@ type SendTRXParams = {
 export class TronTransactionService {
   private readonly logger = new Logger(TronTransactionService.name)
 
-  constructor(private readonly configService: ConfigService<TConfiguration>) {}
+  constructor(
+    private readonly configService: ConfigService<TConfiguration>,
+    private readonly tronInfoService: TronInfoService,
+  ) {}
+
+  /**
+   * How long to wait for an outbound transfer to be mined and confirmed successful.
+   * TRON blocks are ~3s, so 40 polls is ample for a transfer that is going to land.
+   */
+  private readonly CONFIRMATION_ATTEMPTS = 40
 
   private tronWebClass() {
     return new TronWeb({ fullHost: this.configService.get('tron_host_url')! })
@@ -69,6 +79,14 @@ export class TronTransactionService {
         return null
       }
 
+      // `receipt.result` only acknowledges the broadcast. Wait for inclusion so that a returned
+      // hash means the same thing on every path through this service: confirmed on-chain.
+      const blockNumber = await this.tronInfoService.waitForTronTxConfirmation(receipt.txid, this.CONFIRMATION_ATTEMPTS)
+      if (!blockNumber) {
+        this.logger.error(`TRX transfer to ${toAddress} was broadcast as ${receipt.txid} but did not confirm successfully`)
+        return null
+      }
+
       return receipt.txid
     } catch (error) {
       this.logger.error(`TRX transfer to ${toAddress} failed: ${error.message}`)
@@ -97,13 +115,24 @@ export class TronTransactionService {
       const amountInWei = amount
 
       // Create transaction
-      const txHash = (await contract.transfer(toAddress, amountInWei.toString()).send({ feeLimit: 100000000, callValue: 0 })) satisfies string
+      const txHash = (await contract.transfer(toAddress, amountInWei.toString()).send({ feeLimit: 100000000, callValue: 0 })) as string
 
       if (!txHash) {
         this.logger.error(`TRC20 transfer to ${toAddress} failed txHash:`, txHash)
         return null
       }
 
+      // A broadcast is not a completed transfer. Out-of-energy is the exact failure this
+      // pipeline is built around, and it reverts *after* being included in a block — returning
+      // the txid straight from .send() reported those reverts as successful withdrawals and
+      // skipped the energy top-up and retry.
+      const blockNumber = await this.tronInfoService.waitForTronTxConfirmation(txHash, this.CONFIRMATION_ATTEMPTS)
+      if (!blockNumber) {
+        this.logger.error(`TRC20 transfer to ${toAddress} was broadcast as ${txHash} but did not confirm successfully`)
+        return null
+      }
+
+      this.logger.log(`TRC20 transfer to ${toAddress} confirmed in block ${blockNumber} txHash: ${txHash}`)
       return txHash
     } catch (error) {
       this.logger.error(`TRC20 transfer to ${toAddress} failed: ${error.message}`)

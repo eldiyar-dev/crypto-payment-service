@@ -232,19 +232,8 @@ export class SplitWithdrawUseCase {
       return null
     }
 
-    // Wait for tx confirmation
-    const confirmedTxBlockNumber = await this.tronInfoService.waitForTronTxConfirmation(txHash)
-    if (!confirmedTxBlockNumber) {
-      void this.reportService.sendReport({
-        currency: Currency.USDT,
-        address: receiverAddress,
-        amount: Number(amountTRX),
-        amountExact: amountTRX,
-        message: `Failed wait for tx confirmation for active account to ${receiverAddress}`,
-      })
-      this.logger.error(`Failed wait for tx confirmation for active account to ${receiverAddress}`)
-      return null
-    }
+    // sendTRX now waits for on-chain confirmation itself, so a returned hash already means the
+    // account-activation transfer landed — no second wait needed here.
     this.logger.log(`Successfully sent ${amountTRX} TRX for active account to ${receiverAddress}`)
 
     // Rent energy again after tx confirmation
