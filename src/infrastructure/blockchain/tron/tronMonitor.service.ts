@@ -1,5 +1,5 @@
 import { Chain, Currency } from '@/common/enums'
-import { formatBaseUnits, parseBaseUnits, TRON_USDT_DECIMALS, TRX_DECIMALS, withRetry } from '@/common/utils'
+import { decodeTrc20Transfer, formatBaseUnits, parseBaseUnits, TRON_USDT_DECIMALS, TRX_DECIMALS, withRetry } from '@/common/utils'
 import { ChainCheckpointRepository } from '@/domain/repositories/chainCheckpointRepository'
 import { RedisService } from '@/infrastructure/redis/redis.service'
 import { Injectable, Logger } from '@nestjs/common'
@@ -172,27 +172,13 @@ export class TronMonitorService {
               // Address of USDT (TRC20) contract on Tron
               if (contractAddress.toLocaleLowerCase() !== this.usdtContractAddress.toLocaleLowerCase()) continue
 
-              // Check if the method transfer(address,uint256) is called
-              const isTransfer = data.startsWith('a9059cbb')
-              const isTransferFrom = data.startsWith('23b872dd')
+              // Decoded by argument word rather than by hand-rolled offsets, which got the
+              // transferFrom layout wrong and silently missed those deposits entirely.
+              const transfer = decodeTrc20Transfer(data)
+              if (!transfer) continue
 
-              if (!isTransfer && !isTransferFrom) continue
-
-              // Decode the recipient address
-              const toAddressHex = isTransfer ? '41' + data.slice(32, 72) : '41' + data.slice(76, 116)
-
-              const toAddress = this.tronWeb.address.fromHex(toAddressHex)
-
-              // Decode the amount
-              const amountHex = data.slice(72, 136)
-
-              if (data.length < 136) {
-                this.logger.warn(`Data too short for TRC20 transfer in tx ${tx.txID}`, data)
-                continue
-              }
-
-              // Exact from the calldata word — BigInt -> Number was lossy above 2^53.
-              const usdtAmountBase = BigInt('0x' + amountHex)
+              const toAddress = this.tronWeb.address.fromHex(transfer.toAddressHex)
+              const usdtAmountBase = transfer.amount
 
               // Check if the amount is valid
               if (usdtAmountBase <= 0n) {
