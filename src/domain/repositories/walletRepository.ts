@@ -15,11 +15,6 @@ export class WalletRepository extends Repository<Wallet> {
     return this.save(data)
   }
 
-  async getWalletsByChain(chain: Wallet['chain']) {
-    const wallets = await this.find({ where: { chain }, select: { address: true } })
-    return wallets.map(({ address }) => address)
-  }
-
   /**
    * Yields a chain's addresses in batches, ordered by primary key.
    *

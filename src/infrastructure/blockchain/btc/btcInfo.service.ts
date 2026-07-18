@@ -36,24 +36,6 @@ export class BtcInfoService {
     }
   }
 
-  async getBlockByHeight(height: number): Promise<AnkrTransaction[]> {
-    try {
-      const url = `${this.baseUrl}/api/v2/block/${height}`
-      const { data } = await axios.get<AnkrBlock>(url)
-
-      if (!data?.txs) return []
-
-      return data.txs
-    } catch (error) {
-      if (error instanceof AxiosError && error.response?.status === 404) {
-        this.logger.warn(`Block not found at height ${height}`)
-      } else {
-        this.logger.error(`Failed to get block by height ${height}: ${(error as Error).message}`)
-      }
-      return []
-    }
-  }
-
   async getBlockByHeightAllPages(height: number): Promise<AnkrTransaction[]> {
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {

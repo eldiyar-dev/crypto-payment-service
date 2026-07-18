@@ -71,6 +71,11 @@ export default () =>
     // scan the same blocks; the deposit ledger stops that duplicating withdrawals, this stops
     // it duplicating the scan work.
     monitor_leader_election: process.env.MONITOR_LEADER_ELECTION === 'true',
+    /** Comma-separated EVM networks to monitor. Each adds a WebSocket subscription to operate. */
+    enabled_evm_networks: (process.env.ENABLED_EVM_NETWORKS ?? 'ETH')
+      .split(',')
+      .map((network) => network.trim())
+      .filter(Boolean),
     ip_whitelist: (process.env.IP_WHITELIST ?? '')?.split(','),
     api_key_secret: process.env.API_KEY_SECRET,
 
@@ -193,6 +198,7 @@ export type TConfiguration = {
   private_key_secret: string
   allow_legacy_plaintext_keys: boolean
   monitor_leader_election: boolean
+  enabled_evm_networks: string[]
   ip_whitelist: string[]
   api_key_secret: string
 

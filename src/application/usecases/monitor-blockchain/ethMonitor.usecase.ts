@@ -1,10 +1,13 @@
-import { Chain } from '@/common/enums'
+import { Chain, EVM_CHAINS } from '@/common/enums'
+import { EvmNetwork } from '@/common/interfaces'
 import { fireAndForget, formatBaseUnits, SerialQueue } from '@/common/utils'
 import { WalletRepository } from '@/domain/repositories/walletRepository'
 import { EthMonitorService } from '@/infrastructure/blockchain/eth/ethMonitor.service'
 import { LeaderElectionService } from '@/infrastructure/redis/leaderElection.service'
 import { RedisService } from '@/infrastructure/redis/redis.service'
+import { TConfiguration } from '@/infrastructure/config/configuration'
 import { Injectable, Logger, OnApplicationShutdown, OnModuleInit } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
 import { ProcessDepositUseCase } from './processDeposit.usecase'
 
 @Injectable()
@@ -20,6 +23,7 @@ export class EthMonitorUseCase implements OnModuleInit, OnApplicationShutdown {
     private readonly processDepositUseCase: ProcessDepositUseCase,
     private readonly redisService: RedisService,
     private readonly leaderElectionService: LeaderElectionService,
+    private readonly configService: ConfigService<TConfiguration>,
   ) {}
 
   async onModuleInit() {
@@ -31,14 +35,28 @@ export class EthMonitorUseCase implements OnModuleInit, OnApplicationShutdown {
 
     this.execute()
 
-    fireAndForget(this.ethMonitorService.start(Chain.ETH), this.logger, 'Starting ETH monitor')
-    // void this.ethMonitorService.start(Chain.EVM_BASE)
-    // void this.ethMonitorService.start(Chain.EVM_BSC)
-    // void this.ethMonitorService.start(Chain.EVM_POLYGON)
-    // void this.ethMonitorService.start(Chain.EVM_ARBITRUM)
-    // void this.ethMonitorService.start(Chain.EVM_OPTIMISM)
-    // void this.ethMonitorService.start(Chain.EVM_AVALANCHE_C)
-    // void this.ethMonitorService.start(Chain.EVM_FANTOM)
+    // Which EVM networks to monitor is configuration, not seven commented-out lines. Each
+    // network adds an independent WebSocket subscription and reconnect loop to operate, so
+    // enabling one is a deliberate act — but it no longer requires a code change.
+    for (const evmNetwork of this.enabledNetworks()) {
+      fireAndForget(this.ethMonitorService.start(evmNetwork), this.logger, `Starting ${evmNetwork} monitor`)
+    }
+  }
+
+  /**
+   * EVM networks to monitor, from ENABLED_EVM_NETWORKS. Defaults to ETH alone.
+   *
+   * Unknown entries are reported rather than silently ignored — a typo here means a chain
+   * nobody is watching.
+   */
+  private enabledNetworks(): EvmNetwork[] {
+    const configured = this.configService.get<TConfiguration['enabled_evm_networks']>('enabled_evm_networks') ?? []
+    const valid = configured.filter((network): network is EvmNetwork => EVM_CHAINS.includes(network as Chain))
+
+    const unknown = configured.filter((network) => !valid.includes(network as EvmNetwork))
+    if (unknown.length) this.logger.error(`Ignoring unknown ENABLED_EVM_NETWORKS entries: ${unknown.join(', ')}`)
+
+    return valid.length ? valid : [Chain.ETH]
   }
 
   /**

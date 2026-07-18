@@ -29,18 +29,6 @@ export class RedisRepository implements OnModuleDestroy {
     return this.redisClient.del(keys)
   }
 
-  setWithExpiry(key: string, value: string, expiry: number) {
-    return this.redisClient.set(key, value, 'EX', expiry)
-  }
-
-  retrievalCount(key: string) {
-    return this.redisClient.incr(`${key}:retrieval_count`)
-  }
-
-  deleteRetrievalCount(key: string) {
-    return this.delete(`${key}:retrieval_count`)
-  }
-
   exists(...keys: string[]) {
     return this.redisClient.exists(keys)
   }
