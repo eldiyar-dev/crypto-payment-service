@@ -20,6 +20,13 @@ type TWithdrawParams = {
   /** Decimal places for `amount`. */
   decimals: number
   chain: Chain
+  /**
+   * Identity of the deposit being swept. Carried so that every log line and every failure
+   * report can be tied back to a ledger row — without it a failed sweep could not be matched
+   * to the deposit that caused it, which is what makes the ledger actionable.
+   */
+  depositId: number
+  txHash: string
 }
 
 /** Outcome of a sweep, recorded against the deposit ledger by the caller. */
@@ -81,12 +88,14 @@ export class SplitWithdrawUseCase {
    * @returns A result describing whether every attempted leg completed. The caller records
    * this on the deposit ledger, so "failed" must never be reported as "swept".
    */
-  async execute({ currency, address, amount, decimals, chain }: TWithdrawParams): Promise<TWithdrawResult> {
+  async execute({ currency, address, amount, decimals, chain, depositId, txHash }: TWithdrawParams): Promise<TWithdrawResult> {
+    const ref = `deposit #${depositId} (${chain} ${txHash})`
+
     try {
       // Get withdrawal wallets and pie
       const withdrawData = await this.withdrawService.getWithdrawWallets(chain, address)
       if (!withdrawData) {
-        this.logger.error(`Failed to get withdrawal wallets for ${address}`)
+        this.logger.error(`Failed to get withdrawal wallets for ${address} ${ref}`)
         void this.reportService.sendReport({ currency, address, ...this.reportAmount(amount, decimals), message: `Failed to get withdrawal wallets for ${address}` })
         return { success: false, reason: 'Failed to get withdrawal wallets' }
       }
@@ -114,7 +123,7 @@ export class SplitWithdrawUseCase {
       // check and the failure mode it guards against — value silently disappearing into an
       // unallocated rounding residue — is invisible on-chain until reconciliation.
       if (mainAmount + additionalAmount !== amount) {
-        this.logger.error(`Split does not conserve value for ${address}: ${mainAmount} + ${additionalAmount} !== ${amount}`)
+        this.logger.error(`Split does not conserve value for ${address} ${ref}: ${mainAmount} + ${additionalAmount} !== ${amount}`)
         void this.reportService.sendReport({ currency, address, ...this.reportAmount(amount, decimals), message: `Split does not conserve value for ${address}` })
         return { success: false, reason: 'Split does not conserve value' }
       }
@@ -122,14 +131,14 @@ export class SplitWithdrawUseCase {
       // Get source wallet's encrypted private key
       const wallet = await this.walletRepository.getWalletByAddress(address)
       if (!wallet) {
-        this.logger.error(`Source wallet not found for ${address}`)
+        this.logger.error(`Source wallet not found for ${address} ${ref}`)
         return { success: false, reason: 'Source wallet not found' }
       }
 
       // Decrypt in memory at send time — key material is never held decrypted at rest.
       const fromAddressPrivateKey = this.aesCipherService.decryptPrivateKey(wallet.privateKey, address)
       if (!fromAddressPrivateKey) {
-        this.logger.error(`Unable to resolve private key for ${address}; aborting withdrawal`)
+        this.logger.error(`Unable to resolve private key for ${address} ${ref}; aborting withdrawal`)
         void this.reportService.sendReport({ currency, address, ...this.reportAmount(amount, decimals), message: `Unable to resolve private key for ${address}` })
         return { success: false, reason: 'Unable to resolve private key' }
       }
@@ -167,7 +176,7 @@ export class SplitWithdrawUseCase {
 
       return { success: false, reason: `Withdrawal incomplete (additional: ${additionalSent ? 'sent' : 'failed'}, main: ${mainSent ? 'sent' : 'failed'})` }
     } catch (error) {
-      this.logger.error(`Withdraw failed for ${address}: ${error.message}`, error)
+      this.logger.error(`Withdraw failed for ${address} ${ref}: ${error.message}`, error)
       return { success: false, reason: `Withdraw threw: ${(error as Error).message}` }
     }
   }

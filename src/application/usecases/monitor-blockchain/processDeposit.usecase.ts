@@ -80,7 +80,7 @@ export class ProcessDepositUseCase {
     }
 
     try {
-      const result = await this.splitWithdrawUseCase.execute({ currency, address, amount, decimals, chain })
+      const result = await this.splitWithdrawUseCase.execute({ currency, address, amount, decimals, chain, depositId: deposit.id, txHash })
 
       if (result.success) {
         await this.depositRepository.markSwept(deposit.id)
