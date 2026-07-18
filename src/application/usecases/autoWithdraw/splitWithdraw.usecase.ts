@@ -57,7 +57,6 @@ type TWithdrawAccountParams = {
   decimals: number
   currency: Currency
   chain: Chain
-  nonce?: number
 }
 
 /** Up to 0.01 TRX of dust, so repeated fee transfers are distinguishable on-chain. */
@@ -290,7 +289,7 @@ export class SplitWithdrawUseCase {
     return { success: true }
   }
 
-  private async withdrawAccount({ fromAddress, toAddress, amount, decimals, fromAddressPrivateKey, mainPrivateKey, currency, chain, nonce }: TWithdrawAccountParams) {
+  private async withdrawAccount({ fromAddress, toAddress, amount, decimals, fromAddressPrivateKey, mainPrivateKey, currency, chain }: TWithdrawAccountParams) {
     const reportLog = () => {
       void this.reportService.sendReport({ currency, address: fromAddress, ...this.reportAmount(amount, decimals), message: 'Withdrawal failed' })
       this.logger.error(`Withdrawal failed from ${fromAddress} to ${toAddress} ${formatBaseUnits(amount, decimals)} ${currency}`)
@@ -303,7 +302,7 @@ export class SplitWithdrawUseCase {
     }
 
     try {
-      const withdrawAccount = () => this.blockchainTransactionService.sendFunds({ currency, toAddress, amount, privateKey: fromAddressPrivateKey, chain, nonce })
+      const withdrawAccount = () => this.blockchainTransactionService.sendFunds({ currency, toAddress, amount, privateKey: fromAddressPrivateKey, chain })
 
       const txHash = await withdrawAccount()
       if (txHash) return success()

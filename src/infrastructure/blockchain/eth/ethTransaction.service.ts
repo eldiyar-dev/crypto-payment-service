@@ -11,7 +11,6 @@ type SendETHParams = {
   amount: bigint
   privateKey: string
   evmNetwork: EvmNetwork
-  nonce?: number
 }
 
 type SendERC20TokenParams = {
@@ -23,7 +22,6 @@ type SendERC20TokenParams = {
   decimals: number
   evmNetwork: EvmNetwork
   coin: EvmCoin
-  nonce?: number
 }
 
 // type SendAllETHParams = {
@@ -65,7 +63,7 @@ export class EthTransactionService {
    * @returns {Promise<string | null>} The transaction hash if successful, null if failed
    * @throws {Error} If there are insufficient funds for transfer and gas
    */
-  async sendETH({ toAddress, amount, privateKey, evmNetwork, nonce }: SendETHParams): Promise<string | null> {
+  async sendETH({ toAddress, amount, privateKey, evmNetwork }: SendETHParams): Promise<string | null> {
     try {
       const provider = this.provider(evmNetwork)
       const wallet = new ethers.Wallet(privateKey, provider)
@@ -110,7 +108,6 @@ export class EthTransactionService {
         maxFeePerGas,
         maxPriorityFeePerGas,
         gasLimit: gasLimit,
-        nonce,
       })
 
       // wait for confirmation
@@ -135,7 +132,7 @@ export class EthTransactionService {
    * @param {number} params.decimals - The number of decimals of the ERC20 token
    * @returns {Promise<string | null>} The transaction hash if successful, null if failed
    */
-  async sendERC20Token({ toAddress, amount, privateKey, decimals, evmNetwork, coin, nonce }: SendERC20TokenParams): Promise<string | null> {
+  async sendERC20Token({ toAddress, amount, privateKey, decimals, evmNetwork, coin }: SendERC20TokenParams): Promise<string | null> {
     try {
       const provider = this.provider(evmNetwork)
       const wallet = new ethers.Wallet(privateKey, provider)
@@ -168,7 +165,6 @@ export class EthTransactionService {
         gasLimit,
         maxFeePerGas,
         maxPriorityFeePerGas,
-        nonce,
       })
       const receipt = await tx.wait()
       this.logger.log(`Transaction send ERC20 network: ${evmNetwork} to ${toAddress} receipt:`, receipt)

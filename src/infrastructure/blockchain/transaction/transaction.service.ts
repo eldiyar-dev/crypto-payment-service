@@ -14,7 +14,6 @@ type TSendFunds = {
   amount: bigint
   privateKey: string
   chain: Chain
-  nonce?: number
 }
 
 @Injectable()
@@ -42,7 +41,7 @@ export class BlockchainTransactionService {
     return this.configService.get(`evmNetworks.${evmNetwork}.coinDecimals.${coin}`, { infer: true })!
   }
 
-  sendFunds({ currency, toAddress, amount, privateKey, chain, nonce }: TSendFunds) {
+  sendFunds({ currency, toAddress, amount, privateKey, chain }: TSendFunds) {
     switch (chain) {
       case Chain.BTC:
         return this.btcTransactionService.sendBTC({ toAddress, amount, privateKey })
@@ -53,7 +52,7 @@ export class BlockchainTransactionService {
       }
 
       default: {
-        if (currency === Currency.ETH) return this.ethTransactionService.sendETH({ privateKey, toAddress, amount, nonce, evmNetwork: chain })
+        if (currency === Currency.ETH) return this.ethTransactionService.sendETH({ privateKey, toAddress, amount, evmNetwork: chain })
         if (currency === Currency.USDT)
           return this.ethTransactionService.sendERC20Token({
             toAddress,
@@ -61,7 +60,6 @@ export class BlockchainTransactionService {
             privateKey,
             contractAddress: this.evmCoinContractAddress(chain, 'USDT'),
             decimals: this.evmCoinDecimals(chain, 'USDT'),
-            nonce,
             evmNetwork: chain,
             coin: 'USDT',
           })
