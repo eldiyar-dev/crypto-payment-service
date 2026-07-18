@@ -182,13 +182,26 @@ export class BtcTransactionService {
     return fee
   }
 
+  /**
+   * Broadcasts a signed transaction via Blockbook's POST endpoint.
+   *
+   * The hex used to be interpolated into the URL path (`GET /api/v2/sendtx/${txHex}`). A
+   * multi-input sweep easily exceeds typical 8KB URL limits, so those transactions failed —
+   * and the signed transaction was written into every proxy and access log along the path.
+   * POST keeps it in the request body.
+   */
   private async broadcastTransaction(txHex: string): Promise<string | null> {
     try {
-      const url = `${this.baseUrl}/api/v2/sendtx/${txHex}`
-      const { data } = await axios.get<{ result: string }>(url)
+      const url = `${this.baseUrl}/api/v2/sendtx/`
+      const { data } = await axios.post<{ result: string }>(url, txHex, {
+        headers: { 'content-type': 'text/plain' },
+        timeout: 30_000,
+      })
       return data?.result ?? null
     } catch (error) {
-      this.logger.error(`Error broadcasting transaction: ${(error as Error).message}`, error)
+      // Log the message only — the full axios error serialises the request body, which is the
+      // signed transaction.
+      this.logger.error(`Error broadcasting transaction: ${(error as Error).message}`)
       return null
     }
   }
