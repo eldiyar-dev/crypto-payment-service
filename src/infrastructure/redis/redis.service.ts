@@ -16,6 +16,27 @@ export class RedisService {
     await this.redisRepository.setArray(`${chain}:address`, Array.isArray(address) ? address : [address])
   }
 
+  /** Number of addresses cached for a chain, for reconciliation against the durable store. */
+  async countAddresses(chain: Chain): Promise<number> {
+    return this.redisRepository.scard(`${chain}:address`)
+  }
+
+  /**
+   * Compares the cached allow-list against the authoritative Postgres count and reports any
+   * divergence.
+   *
+   * A short cache means deposits to the missing addresses are silently undetectable: the
+   * membership check simply returns false, with no error anywhere. This turns that into a
+   * visible, alertable condition at boot.
+   */
+  async verifyAddressCache(chain: Chain, expectedCount: number): Promise<boolean> {
+    const cachedCount = await this.countAddresses(chain)
+    if (cachedCount >= expectedCount) return true
+
+    this.logger.error(`Address cache for ${chain} holds ${cachedCount} of ${expectedCount} known addresses — deposits to the missing addresses will NOT be detected`)
+    return false
+  }
+
   async addFeeTransactionHash(txHash: string) {
     this.logger.log(`Adding fee transaction hash ${txHash}`)
     await this.redisRepository.set(`fee:txHash:${txHash}`, '1')

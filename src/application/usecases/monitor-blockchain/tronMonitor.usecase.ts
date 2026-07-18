@@ -20,7 +20,12 @@ export class TronMonitorUseCase implements OnModuleInit, OnApplicationShutdown {
 
   async onModuleInit() {
     const dbWallets = await this.getDBWallets()
-    if (dbWallets.length) void this.redisService.addAddress(Chain.TRON, dbWallets)
+    if (dbWallets.length) {
+      // Awaited, not fire-and-forget: starting the monitor before the allow-list is
+      // populated means deposits arriving in that window are not recognised.
+      await this.redisService.addAddress(Chain.TRON, dbWallets)
+      await this.redisService.verifyAddressCache(Chain.TRON, dbWallets.length)
+    }
 
     this.execute()
 

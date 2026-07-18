@@ -60,4 +60,8 @@ export class RedisRepository implements OnModuleDestroy {
   smembers(key: string) {
     return this.redisClient.smembers(key)
   }
+
+  scard(key: RedisKey) {
+    return this.redisClient.scard(key)
+  }
 }
