@@ -141,7 +141,7 @@ export class SplitWithdrawUseCase {
       // Load and validate the source wallet BEFORE spending anything on energy. Renting first
       // meant an attacker could burn the shared Tronsave balance by sending dust to addresses
       // that have no wallet record at all.
-      const wallet = await this.walletRepository.getWalletByAddress(address)
+      const wallet = await this.walletRepository.getWalletByAddress(address, chain)
       if (!wallet) {
         // The only failure branch in this file that used to return without notifying anyone.
         // Reachable in normal operation: Wallet has a deleted_at soft-delete column and

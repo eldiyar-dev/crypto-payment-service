@@ -42,7 +42,15 @@ export class WalletRepository extends Repository<Wallet> {
     }
   }
 
-  async getWalletByAddress(address: Wallet['address']) {
-    return this.findOne({ where: { address } })
+  /**
+   * Looks up a wallet by address **and chain**.
+   *
+   * Querying by address alone returned an arbitrary row: ETH wallets are duplicated across all
+   * 8 EVM chains, so 8 rows share an address. Benign only while the duplicates carry identical
+   * key material — it breaks the moment per-chain keys diverge, and it silently defeats the
+   * `@Unique(['address','chain'])` index that exists precisely to make this pair the identity.
+   */
+  async getWalletByAddress(address: Wallet['address'], chain: Wallet['chain']) {
+    return this.findOne({ where: { address, chain } })
   }
 }
