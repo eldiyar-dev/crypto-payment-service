@@ -85,6 +85,29 @@ export class BtcInfoService {
     return []
   }
 
+  /**
+   * Current fee rate in satoshi per vbyte, for confirmation within `blocks`.
+   *
+   * Blockbook reports fees as BTC per kilobyte, so the value is converted. Returns null if the
+   * estimate is unavailable or nonsensical, letting the caller fall back to a safe default
+   * rather than broadcasting at whatever number came back.
+   */
+  async getFeeRateSatPerVByte(blocks = 3): Promise<number | null> {
+    try {
+      const url = `${this.baseUrl}/api/v2/estimatefee/${blocks}`
+      const { data } = await axios.get<{ result: string }>(url, { timeout: 10_000 })
+
+      const btcPerKb = parseFloat(data?.result ?? '')
+      if (!Number.isFinite(btcPerKb) || btcPerKb <= 0) return null
+
+      // BTC/kB -> sat/vB
+      return (btcPerKb * 1e8) / 1000
+    } catch (error) {
+      this.logger.error(`Failed to get fee rate: ${(error as Error).message}`)
+      return null
+    }
+  }
+
   async getUTXOs(address: string): Promise<UTXO[]> {
     try {
       const utxoUrl = `${this.baseUrl}/api/v2/utxo/${address}`

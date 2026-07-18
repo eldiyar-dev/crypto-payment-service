@@ -32,6 +32,12 @@ export class BtcTransactionService {
   private readonly network: bitcoin.Network
   private readonly baseUrl: string
 
+  /** Relay minimum. Below this a transaction is simply not propagated. */
+  private readonly MIN_FEE_RATE = 1
+  /** Guards against a wildly wrong estimate draining the wallet in fees. */
+  private readonly MAX_FEE_RATE = 500
+  private readonly FALLBACK_FEE_RATE = 10
+
   constructor(
     private readonly configService: ConfigService<TConfiguration>,
     private readonly btcInfoService: BtcInfoService,
@@ -98,7 +104,13 @@ export class BtcTransactionService {
 
       // Already in satoshi — exact.
       const totalOutput = outputs.reduce((sum, output) => sum + output.amount, 0n)
-      const fee = 1000n // satoshi
+
+      // Sized from the actual transaction and the current network rate. A flat 1000 sat
+      // regardless of size meant that any multi-input sweep fell below the relay minimum, so
+      // the transaction was rejected or stuck in the mempool indefinitely — and there is no
+      // RBF/CPFP path to rescue it.
+      const outputCount = outputs.filter((output) => output.amount > 0n).length + 1 // +1 for change
+      const fee = await this.estimateFee(utxos.length, outputCount)
 
       if (totalInput < fee) {
         this.logger.error(`Insufficient funds for fee for fromAddress: ${fromAddress}`)
@@ -147,6 +159,27 @@ export class BtcTransactionService {
       this.logger.error(`Error sending BTC from ${outputs.length} output(s): ${(error as Error).message}`)
       return null
     }
+  }
+
+  /**
+   * Estimates the fee for a p2wpkh transaction of the given shape.
+   *
+   * vsize is approximated from the standard segwit component sizes: ~11 vbytes of overhead,
+   * ~68 vbytes per p2wpkh input, ~31 vbytes per output. The rate is clamped so that a bad or
+   * missing estimate cannot produce either an unrelayable transaction or a catastrophic
+   * overpay.
+   */
+  private async estimateFee(inputCount: number, outputCount: number): Promise<bigint> {
+    const vsize = 11 + inputCount * 68 + outputCount * 31
+
+    const reported = await this.btcInfoService.getFeeRateSatPerVByte()
+    if (reported === null) this.logger.warn(`Fee estimate unavailable; falling back to ${this.FALLBACK_FEE_RATE} sat/vB`)
+
+    const rate = Math.min(Math.max(reported ?? this.FALLBACK_FEE_RATE, this.MIN_FEE_RATE), this.MAX_FEE_RATE)
+    const fee = BigInt(Math.ceil(vsize * rate))
+
+    this.logger.log(`Estimated fee: ${fee} sat (${vsize} vbytes at ${rate.toFixed(2)} sat/vB, ${inputCount} in / ${outputCount} out)`)
+    return fee
   }
 
   private async broadcastTransaction(txHex: string): Promise<string | null> {
