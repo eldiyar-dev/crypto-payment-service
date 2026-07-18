@@ -67,11 +67,17 @@ export class TronInfoService {
    * Transient RPC errors are tolerated: previously an exception inside the loop aborted the
    * whole wait, which the caller could not distinguish from a genuine failure.
    *
+   * The default bound is deliberately short. It used to be 1200 one-second polls — a
+   * 20-minute blocking wait sitting directly in the deposit path, holding the serial queue and
+   * every deposit behind it. TRON produces a block roughly every 3 seconds, so a transfer that
+   * is going to confirm does so well inside a minute; waiting longer does not make it more
+   * likely to land, it only delays discovering that it did not.
+   *
    * @param txHash - The hash of the transaction to wait for
    * @param maxAttempts - Maximum one-second polls before giving up
    * @returns The block number if the transaction succeeded, null if it reverted or timed out
    */
-  async waitForTronTxConfirmation(txHash: string, maxAttempts = 1_200): Promise<number | null> {
+  async waitForTronTxConfirmation(txHash: string, maxAttempts = 60): Promise<number | null> {
     for (let attempts = 0; attempts < maxAttempts; attempts++) {
       try {
         const txInfo = await this.tronWeb.trx.getTransactionInfo(txHash)
