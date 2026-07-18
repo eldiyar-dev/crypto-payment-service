@@ -78,6 +78,19 @@ export class RedisService {
     return value === '1'
   }
 
+  /**
+   * Claims an API key signature as used, atomically.
+   *
+   * SET NX with a TTL matching the key's validity window: the first caller to present a given
+   * signature wins, every replay within the window loses. Without this a captured key was
+   * replayable for its full lifetime.
+   *
+   * @returns True if this call claimed the nonce (i.e. the key had not been used).
+   */
+  async claimApiKeyNonce(signature: string, ttlMs: number): Promise<boolean> {
+    return this.redisRepository.setIfAbsent(`apikey:nonce:${signature}`, '1', ttlMs)
+  }
+
   async get<T>(key: string): Promise<T | null> {
     const value = await this.redisRepository.get(key)
     if (!value) return null
