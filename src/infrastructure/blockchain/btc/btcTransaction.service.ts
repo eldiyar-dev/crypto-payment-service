@@ -1,4 +1,4 @@
-import { BTC_DECIMALS, formatBaseUnits } from '@/common/utils'
+import { BTC_DECIMALS, estimateP2wpkhVsize, formatBaseUnits } from '@/common/utils'
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import axios from 'axios'
@@ -170,7 +170,7 @@ export class BtcTransactionService {
    * overpay.
    */
   private async estimateFee(inputCount: number, outputCount: number): Promise<bigint> {
-    const vsize = 11 + inputCount * 68 + outputCount * 31
+    const vsize = estimateP2wpkhVsize(inputCount, outputCount)
 
     const reported = await this.btcInfoService.getFeeRateSatPerVByte()
     if (reported === null) this.logger.warn(`Fee estimate unavailable; falling back to ${this.FALLBACK_FEE_RATE} sat/vB`)

@@ -1,3 +1,4 @@
+export * from './btcFee.util'
 export * from './calculate.util'
 export * from './deriveAddress.util'
 export * from './detectBlockchainNetwork.util'
