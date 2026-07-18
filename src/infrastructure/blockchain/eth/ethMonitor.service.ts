@@ -1,6 +1,6 @@
 import { Chain, Currency } from '@/common/enums'
 import { EvmCoin, EvmNetwork } from '@/common/interfaces'
-import { ETH_DECIMALS, formatBaseUnits, parseBaseUnits, withRetry } from '@/common/utils'
+import { ETH_DECIMALS, formatBaseUnits, parseBaseUnits, sleep, withRetry } from '@/common/utils'
 import { RedisService } from '@/infrastructure/redis/redis.service'
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
@@ -40,10 +40,22 @@ export class EthMonitorService {
     return addresses.map((address) => address.toLowerCase())
   }
 
-  private usdtContract: ethers.Contract
-
   // ERC20 ABI for Transfer event
   private readonly ERC20_ABI = ['event Transfer(address indexed from, address indexed to, uint256 value)']
+
+  /**
+   * Exactly one live provider per network. A shared `usdtContract` field also meant that
+   * starting a second network silently replaced the first network's contract subscription.
+   */
+  private readonly providers = new Map<EvmNetwork, ethers.WebSocketProvider>()
+  /** Networks with a reconnect already in flight, so concurrent error events collapse into one. */
+  private readonly reconnecting = new Set<EvmNetwork>()
+  private readonly reconnectAttempts = new Map<EvmNetwork, number>()
+  private stopped = false
+
+  private readonly MAX_RECONNECT_ATTEMPTS = 12
+  private readonly BASE_RECONNECT_DELAY_MS = 1_000
+  private readonly MAX_RECONNECT_DELAY_MS = 60_000
 
   onDeposit(callback: DepositCallback) {
     this.depositCallback = callback
@@ -62,32 +74,120 @@ export class EthMonitorService {
     return this.configService.get(`evmNetworks.${evmNetwork}.coinDecimals.${coin}`, { infer: true })!
   }
 
+  /**
+   * Starts (or restarts) the block and USDT subscriptions for one network.
+   *
+   * Any existing provider for the network is torn down first, so there is always exactly one
+   * live provider per network. Previously `provider.on('error')` and `provider.websocket.onerror`
+   * each called reconnect() independently: a single socket failure spawned two new providers,
+   * each with its own block listener and USDT subscription, and only one was reachable via the
+   * closure. Every subsequent block was then scanned 2x, 4x, 8x..., invoking the deposit
+   * callback once per duplicate listener.
+   */
   async start(evmNetwork: EvmNetwork) {
+    if (this.stopped) return
+
+    await this.teardown(evmNetwork)
+
     try {
       const provider = new ethers.WebSocketProvider(this.getProviderWssUrl(evmNetwork))
+      this.providers.set(evmNetwork, provider)
 
-      const reconnect = async () => {
-        await provider.removeAllListeners()
-        await provider.destroy()
-        await this.start(evmNetwork)
-      }
-
-      void provider.on('error', async (err) => {
-        this.logger.error(`WebSocketProvider error: ${err.message}`, err)
-        await reconnect()
+      // Every failure signal funnels into the same guarded path, which is idempotent.
+      void provider.on('error', (err: Error) => {
+        this.logger.error(`WebSocketProvider error network: ${evmNetwork}: ${err.message}`)
+        void this.scheduleReconnect(evmNetwork)
       })
-      provider.websocket.onerror = async (err) => {
-        this.logger.error(`WebSocket error: ${err.message}`, err)
-        await reconnect()
+
+      const socket = this.socketHandlers(provider)
+      socket.onerror = (err) => {
+        this.logger.error(`WebSocket error network: ${evmNetwork}: ${err?.message ?? 'unknown'}`)
+        void this.scheduleReconnect(evmNetwork)
+      }
+      // A clean close is still a lost subscription: without this, a server-side disconnect
+      // leaves the monitor silently deaf rather than reconnecting.
+      socket.onclose = () => {
+        this.logger.warn(`WebSocket closed network: ${evmNetwork}`)
+        void this.scheduleReconnect(evmNetwork)
       }
 
       await this.listenEthTransfers(provider, evmNetwork)
 
-      this.usdtContract = new ethers.Contract(this.getCoinContractAddress(evmNetwork, 'USDT'), this.ERC20_ABI, provider)
-      await this.listenUsdtTransfers(this.usdtContract, evmNetwork)
+      const usdtContract = new ethers.Contract(this.getCoinContractAddress(evmNetwork, 'USDT'), this.ERC20_ABI, provider)
+      await this.listenUsdtTransfers(usdtContract, evmNetwork)
+
+      // Only a fully established subscription resets the backoff.
+      this.reconnectAttempts.set(evmNetwork, 0)
+      this.logger.log(`ETH monitor started network: ${evmNetwork}`)
     } catch (err) {
-      this.logger.error(`Error starting ETH monitor network: ${evmNetwork} ${err instanceof Error ? err.message : String(err)}`, err)
+      this.logger.error(`Error starting ETH monitor network: ${evmNetwork} ${err instanceof Error ? err.message : String(err)}`)
+      void this.scheduleReconnect(evmNetwork)
     }
+  }
+
+  /**
+   * Reconnects a network at most once at a time, with exponential backoff, jitter and a cap.
+   *
+   * The guard is what makes duplicate listeners impossible: concurrent error/close events for
+   * the same network observe `reconnecting` and return without spawning a second provider.
+   */
+  private async scheduleReconnect(evmNetwork: EvmNetwork) {
+    if (this.stopped || this.reconnecting.has(evmNetwork)) return
+    this.reconnecting.add(evmNetwork)
+
+    const attempt = (this.reconnectAttempts.get(evmNetwork) ?? 0) + 1
+    this.reconnectAttempts.set(evmNetwork, attempt)
+
+    if (attempt > this.MAX_RECONNECT_ATTEMPTS) {
+      this.reconnecting.delete(evmNetwork)
+      this.logger.error(`Giving up reconnecting network: ${evmNetwork} after ${this.MAX_RECONNECT_ATTEMPTS} attempts — deposits on this network are NOT being detected`)
+      return
+    }
+
+    // Full jitter, so a shared RPC outage does not produce a synchronised retry storm.
+    const backoff = Math.min(this.BASE_RECONNECT_DELAY_MS * 2 ** (attempt - 1), this.MAX_RECONNECT_DELAY_MS)
+    const delay = Math.floor(Math.random() * backoff)
+    this.logger.warn(`Reconnecting network: ${evmNetwork} in ${delay}ms (attempt ${attempt}/${this.MAX_RECONNECT_ATTEMPTS})`)
+
+    await sleep(delay)
+    this.reconnecting.delete(evmNetwork)
+
+    await this.start(evmNetwork)
+  }
+
+  /**
+   * ethers types `provider.websocket` as `WebSocketLike`, which does not declare `onclose`.
+   * The underlying socket does have it, so it is surfaced here in one narrowly-typed place.
+   */
+  private socketHandlers(provider: ethers.WebSocketProvider) {
+    return provider.websocket as unknown as {
+      onerror: ((err: { message?: string } | null) => void) | null
+      onclose: (() => void) | null
+    }
+  }
+
+  /** Removes listeners and destroys the provider for a network, if one is live. */
+  private async teardown(evmNetwork: EvmNetwork) {
+    const existing = this.providers.get(evmNetwork)
+    if (!existing) return
+
+    this.providers.delete(evmNetwork)
+    try {
+      // Detach the handlers first, or destroying the socket schedules another reconnect.
+      const socket = this.socketHandlers(existing)
+      socket.onerror = null
+      socket.onclose = null
+      await existing.removeAllListeners()
+      await existing.destroy()
+    } catch (err) {
+      this.logger.warn(`Error tearing down provider network: ${evmNetwork}: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
+  /** Stops all subscriptions permanently. Used on graceful shutdown. */
+  async stop() {
+    this.stopped = true
+    await Promise.all([...this.providers.keys()].map((evmNetwork) => this.teardown(evmNetwork)))
   }
 
   private async listenEthTransfers(provider: ethers.WebSocketProvider, evmNetwork: EvmNetwork) {
