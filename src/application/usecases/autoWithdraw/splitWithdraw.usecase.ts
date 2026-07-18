@@ -104,6 +104,19 @@ export class SplitWithdrawUseCase {
 
       const { mainAddress, mainPrivateKey, additionalAddress, pie } = withdrawData
 
+      // Defence in depth: WithdrawService already rejects an out-of-range pie at the boundary,
+      // and splitAmountByPercentage throws on one. Checking here too means the failure is
+      // reported with deposit context rather than surfacing as a bare exception.
+      //
+      // Unvalidated, `undefined` made both legs NaN — and because `if (amount)` is falsy for
+      // NaN, the funds silently never moved and no report was sent at all. `pie > 100` made
+      // the main leg negative, which is truthy, so a send was attempted with a negative amount.
+      if (!Number.isFinite(pie) || pie < 0 || pie > 100) {
+        this.logger.error(`Invalid split percentage for ${address} ${ref}: ${String(pie)}`)
+        void this.reportService.sendReport({ currency, address, ...this.reportAmount(amount, decimals), message: `Invalid split percentage received: ${String(pie)}` })
+        return { success: false, reason: `Invalid split percentage: ${String(pie)}` }
+      }
+
       // Rent energy
       if (chain === Chain.TRON && currency === Currency.USDT) {
         const orderId = await this.rentEnergy(address, mainPrivateKey)
