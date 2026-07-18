@@ -9,9 +9,9 @@ This document describes the fund-movement architecture of the crypto-payment-ser
 The service runs as a single NestJS process (optionally PM2-clustered in production) that:
 
 - Maintains long-lived connections/polling loops against three blockchain networks in parallel.
-- Holds custody of source-wallet private keys, encrypted at rest (AES-256-CBC, `AESCipherService`).
+- Holds custody of source-wallet private keys, encrypted at rest (AES-256-GCM with a per-record salt, `AESCipherService`). Legacy AES-256-CBC (`v1`) envelopes still decrypt for migration.
 - Delegates business decisions (destination wallets, split ratio) to an external system, the **client API** (`CLIENT_API_URL`), reached over HTTP.
-- Persists only wallet records (address + encrypted private key + chain) to Postgres via TypeORM. Deposits are **not** persisted — `deposit.entity.ts` and `depositRepository.ts` are empty stubs. Redis is the only stateful store used during the deposit-to-withdrawal pipeline.
+- Persists wallet records, a **deposit ledger** (`Deposit`) and per-chain scan checkpoints (`ChainCheckpoint`) to Postgres via TypeORM. The deposit ledger is written before any funds move and is both the crash-recovery record and the idempotency key. Redis is a cache and a coordination primitive, not a source of truth.
 
 ```mermaid
 flowchart LR
@@ -57,11 +57,11 @@ Each chain has a dedicated infrastructure-layer monitor service that watches onl
 
 | Chain | Mechanism | File |
 |---|---|---|
-| ETH / EVM | `ethers.WebSocketProvider`, subscribes to new blocks and to the USDT `Transfer` event on the ERC-20 contract; inspects every transaction in each new block for a `to` address in the allow-list | `infrastructure/blockchain/eth/ethMonitor.service.ts` |
+| ETH / EVM | `ethers.WebSocketProvider` subscribes to new heads, but scans only blocks buried under the confirmation depth. Native transfers come from the block body; USDT transfers from `eth_getLogs` over the same confirmed block, so both share one confirmation rule and one checkpoint | `infrastructure/blockchain/eth/ethMonitor.service.ts` |
 | TRON | HTTP polling of `tronWeb.trx.getBlock` every 3s, starting from `lastCheckedBlock`; decodes both native `TransferContract` and TRC-20 `TriggerSmartContract` calldata manually | `infrastructure/blockchain/tron/tronMonitor.service.ts` |
 | BTC | HTTP polling (Blockbook/Ankr-style API) every 60s for new blocks; matching outputs are staged into a Redis pending set rather than reported immediately | `infrastructure/blockchain/btc/btcMonitor.service.ts` |
 
-Only `Chain.ETH` monitoring is actually started (`EthMonitorUseCase.onModuleInit`); the other EVM networks (`EVM_BASE`, `EVM_BSC`, `EVM_POLYGON`, `EVM_ARBITRUM`, `EVM_OPTIMISM`, `EVM_AVALANCHE_C`, `EVM_FANTOM`) are wired through configuration and `EVM_CHAINS` but their `ethMonitorService.start(...)` calls are commented out.
+Which EVM networks are monitored is configuration (`ENABLED_EVM_NETWORKS`, default `ETH`). Each additional network adds an independent WebSocket subscription and reconnect loop to operate.
 
 Minimum-deposit thresholds are enforced at detection time (e.g. 0.001 ETH, 0.5 USDT, 1 TRX, 0.00005 BTC) to filter dust.
 
@@ -70,19 +70,25 @@ Minimum-deposit thresholds are enforced at detection time (e.g. 0.001 ETH, 0.5 U
 Detection and confirmation are decoupled per chain:
 
 - **BTC**: a matched output's txid is written to a Redis pending set (`btc:pending:txs`) at detection time. A separate polling pass (`checkPendingDeposits`, invoked on every 60s tick) re-queries each pending tx and only fires the deposit callback once `confirmations >= confirmationsThreshold` (2). The txid is then removed from the pending set — this Redis set is a durable work queue for "detected but not yet confirmed" deposits that survives a process restart, unlike an in-memory timer.
-- **TRON**: confirmation is derived from block depth (`currentBlockNumber - blockNum + 1 >= confirmationThreshold`, currently 1) at the time the block is polled, not via a separate reconciliation pass.
-- **ETH/EVM**: no explicit confirmation gate — a deposit is reported as soon as it appears in a fetched block. Reliability here relies on the WebSocket subscription's own block-emission timing rather than an app-level confirmation count.
+- **TRON**: only blocks at or below `currentBlockNumber - confirmations + 1` are scanned (default 19, TRON's irreversibility depth). Shallower blocks are left for a later poll.
+- **ETH/EVM**: the scanner targets `head - confirmations` (default 12 on mainnet, per-chain elsewhere) and advances through the range, so a missed head notification cannot skip a block.
+
+Depth is the primary reorg protection. Each deposit also stores the `blockHash`/`blockNumber` it was seen at, so a reorg can be detected after the fact; re-validating the block hash immediately before sweeping is **not** implemented.
 
 ### Stage 3 — Deposit Notification & Queuing
 
 On a confirmed deposit, the use case layer (`*MonitorUseCase`) does two things:
 
-1. Fire-and-forget notification to the external client API (`DepositService.notifyNewDeposit` → `POST /api/new_deposit`). Failure is logged and swallowed — it does not block withdrawal.
-2. Hand the deposit off for withdrawal processing.
+All three chains funnel into `ProcessDepositUseCase`, which enforces the ordering that makes the pipeline recoverable:
 
-For ETH, this handoff goes through an **in-memory serial queue** (`depositQueue: Array<() => Promise<void>>`, drained by `processQueue`) so that multiple deposits landing in quick succession are processed one at a time per process instance, preventing concurrent withdrawal attempts (and therefore nonce/balance races) against the same or different source wallets. BTC and TRON invoke `SplitWithdrawUseCase.execute` directly without this queue.
+1. **Record.** Insert the `Deposit` row before anything moves.
+2. **Claim atomically.** `ON CONFLICT DO NOTHING` against the `(chain, txHash, address, outputIndex)` unique key. A re-delivered deposit — duplicated listener, overlapping poll, restart mid-flight, second instance — collapses onto the existing row.
+3. **Notify** the client API (fire-and-forget, recorded in `clientNotifiedAt`; reconciliation re-sends anything unacknowledged, making delivery at-least-once).
+4. **Check outflow limits.** A deposit over the per-deposit ceiling or the rolling hourly total is recorded `HELD` for manual release instead of swept.
+5. **Compare-and-swap `DETECTED -> SWEEPING`**, so exactly one worker proceeds to move funds.
+6. **Sweep, then record the outcome** (`SWEPT` / `FAILED` with a reason).
 
-This queue is in-memory only: it is not persisted, so an in-flight deposit is lost from the queue (though not from the chain) if the process crashes between detection and the point where `SplitWithdrawUseCase.execute` starts. Re-detection depends on the chain monitor re-scanning past state (BTC's pending set) or is not automatically retried (ETH, TRON).
+Each chain has its own bounded `SerialQueue`, so deposits are swept one at a time per chain — concurrent sweeps race on the shared fee wallet's nonce and balance. The queue is in-memory, but losing it is no longer lossy: the scan checkpoint has not advanced past an unprocessed deposit, so it is re-detected, and the ledger makes re-detection idempotent.
 
 ### Stage 4 — Auto-Split Calculation
 
@@ -90,9 +96,9 @@ This queue is in-memory only: it is not persisted, so an in-flight deposit is lo
 
 1. Calls the client API (`WithdrawService.getWithdrawWallets`, `GET /api/withdraw_wallets`) to obtain the destination `mainAddress`, `additionalAddress`, `mainPrivateKey` (for the destination's own fee wallet), and `pie` — the percentage split between the two destinations. This call is per-deposit; the split configuration is not cached, so it can change between deposits without a redeploy.
 2. For TRON/USDT deposits, rents TRC-20 execution energy for the source address via `TronEnergyService` before moving funds (see Stage 5 fee handling).
-3. Computes `{ mainAmount, additionalAmount } = splitAmountByPercentage(amount, pie)` — a pure percentage split of the full deposited amount.
-4. Loads the source wallet's encrypted private key from Postgres and decrypts it implicitly at send time.
-5. Executes up to two outbound transfers (additional, then main) via `withdrawAccount`.
+3. Computes `{ mainAmount, additionalAmount } = splitAmountByPercentage(amount, pie)` in basis points on `bigint`. The additional leg truncates down and the main leg takes the remainder, so the two always sum to the deposit exactly; the invariant is asserted at runtime.
+4. Loads the source wallet from Postgres by `(address, chain)` and decrypts its private key in memory at send time.
+5. Executes the transfers. On BTC both legs share a **single transaction**, so the split is atomic. Elsewhere the additional leg runs first and its result gates the main leg; a main-leg failure after the additional leg landed is reported distinctly as `PARTIAL SWEEP`.
 
 If withdrawal wallet lookup fails or the source wallet record is missing, the flow aborts for that deposit and reports the failure; it does not retry from within this use case.
 
@@ -104,6 +110,8 @@ If withdrawal wallet lookup fails or the source wallet record is missing, the fl
 - **EVM chains**: estimates the required gas in ETH (`EthInfoService.getUSDTGasPriceInEth` / `getEthTransferGasPriceInEth`, falling back to a hardcoded 0.0007 ETH ceiling if estimation fails), sends that amount plus a small buffer from `mainPrivateKey` to the source address, marks the resulting tx hash in Redis (`addFeeTransactionHash`, 10-minute TTL) so the ETH monitor's block scanner recognizes and skips its own gas-funding transaction rather than misreading it as a customer deposit, then retries the withdrawal once.
 - **BTC**: no top-up path is implemented; failure is reported directly.
 
+Sends return a typed `SendOutcome`, so the top-up-and-retry only runs for failures that funding can actually fix. A terminal failure (malformed address, reverted call) is reported immediately rather than burning a gas transfer on a doomed retry.
+
 A second failure after top-up (or any exception) is reported to the client API (`ReportService.sendReport` → `POST /api/report`) and logged; the use case returns without throwing, so a stuck withdrawal does not crash the process or block the deposit queue behind it.
 
 ## 3. Reliability Patterns in Use
@@ -112,24 +120,31 @@ A second failure after top-up (or any exception) is reported to the client API (
 |---|---|---|
 | **Serial per-process work queue** | `EthMonitorUseCase.depositQueue` / `processQueue` | Prevents concurrent withdrawal execution against the same source wallet from the same instance (avoids nonce collisions and double-spends of the same balance). |
 | **Bounded retry with backoff** | `common/utils/retry.util.ts` (`withRetry`, used for ETH/TRON block fetches); `BtcInfoService.getBlockByHeightAllPages` (inline 3-attempt retry with linear backoff) | Absorbs transient RPC/HTTP failures when reading chain data without failing the whole polling cycle. |
-| **WebSocket auto-reconnect** | `EthMonitorService.start` — `provider.on('error', ...)` and `provider.websocket.onerror` both tear down and recursively call `start(evmNetwork)` | Recovers the block/USDT-event subscription after a dropped WebSocket connection without manual intervention. |
+| **Guarded WebSocket reconnect** | `EthMonitorService.scheduleReconnect` — one provider per network, one reconnect in flight, exponential backoff with jitter and an attempt cap | Recovers a dropped subscription without spawning duplicate providers (each of which would re-report every deposit). |
 | **Detect/confirm split with durable reconciliation queue** | BTC: Redis pending-tx set (`btc:pending:txs`) decoupling "seen in a block" from "has N confirmations" | Survives process restarts — pending confirmations are re-checked from Redis state rather than an in-memory timer. |
-| **Confirmation thresholds** | BTC (2 confirmations), TRON (1 confirmation via block-depth) | Reduces the chance of acting on a deposit that is later reorganized out of the chain. |
+| **Confirmation thresholds** | Per-chain and config-driven: BTC 2, TRON 19, ETH 12, per-chain for EVM siblings | Reduces the chance of acting on a deposit that is later reorganized out of the chain. |
+| **Durable deposit ledger with atomic claim** | `Deposit` + `ProcessDepositUseCase` | Crash recovery, idempotency and reconciliation all rest on this one row. |
+| **Durable scan checkpoints** | `ChainCheckpoint`, advanced only after a block is fully processed | Downtime becomes a gap that gets re-scanned rather than deposits lost forever. |
+| **Bounded serial queue per chain** | `SerialQueue` | One sweep at a time per chain, with backpressure instead of unbounded growth. |
+| **Automated-outflow limits** | `ProcessDepositUseCase.checkSweepLimits` | A per-deposit ceiling and a rolling hourly total; over either, the deposit is `HELD` for a human. |
+| **Ledger-vs-chain reconciliation** | `ReconcileDepositsUseCase` | Detects stuck, failed and held deposits and funds still sitting at a source address. |
+| **RPC failover with quorum** | `EvmProviderFactory` | A single compromised or failing endpoint cannot by itself convince the service a deposit exists. |
 | **Idempotency marker for self-generated transactions** | `RedisService.addFeeTransactionHash` / `isFeeTransactionHash`, checked in `EthMonitorService.checkBlockForDeposits` | Prevents the service's own gas-funding transfer to a source wallet from being misinterpreted as a new customer deposit and re-entering the pipeline. |
 | **Address cache reseeded from durable storage on boot** | `*MonitorUseCase.onModuleInit` → `redisService.addAddress(chain, dbWallets)` | Redis (cache) can be flushed or restarted without losing the ability to recognize known deposit addresses, since Postgres remains authoritative. |
 | **Top-up-then-retry for fee/energy exhaustion** | `SplitWithdrawUseCase.withdrawAccount`, `rentEnergy` | Handles the common failure mode of an empty source wallet (no gas/energy) without operator intervention, by funding it just enough to complete the withdrawal and retrying once. |
 | **Fail-safe / fire-and-forget external reporting** | `ReportService.sendReport` called from every failure branch in `SplitWithdrawUseCase`; `DepositService.notifyNewDeposit` | Failures are surfaced to the external client API for operator visibility but never thrown, so a reporting failure or a single bad deposit cannot crash the monitor process or stall the queue. |
 | **Per-unit error isolation** | try/catch around each transaction in `checkBlockForDeposits`/`pollDeposits`, around each queue task in `processQueue`, around each stage in `SplitWithdrawUseCase.execute` | A malformed or failing individual transaction/deposit does not abort the surrounding block/poll/queue iteration. |
 | **On-chain confirmation wait before success** | `txResponse.wait()` (EVM), `TronInfoService.waitForTronTxConfirmation` (polls up to 1200×1s) | Outbound transfers are only reported as successful once mined/confirmed, not merely broadcast. |
-| **Balance-aware amount clamping** | `EthTransactionService.sendETH` — reduces `amountWei` to `balance - totalGasWithBuffer` if the requested amount plus a 25% gas buffer would exceed the balance | Avoids broadcasting a transaction that would be rejected for insufficient funds once gas is accounted for. |
-| **Encryption at rest for custodial key material** | `AESCipherService` (AES-256-CBC, scrypt-derived key, random IV per encryption) applied to `Wallet.privateKey` | Limits blast radius of a Postgres-only data compromise; keys are only decrypted in memory at send time. |
+| **Fail-loud on insufficient funds** | All three `send*` implementations | A wallet that cannot cover the requested amount produces a typed failure, never a silently reduced transfer reported as success. |
+| **Encryption at rest for custodial key material** | `AESCipherService` (AES-256-GCM, per-record salt, HKDF-derived key from a scrypt-stretched master) applied to `Wallet.privateKey` | Limits blast radius of a Postgres-only data compromise; tampering fails closed on the auth tag; keys are decrypted only in memory at send time. |
 
 ## 4. Known Reliability Gaps
 
-These are structural limitations of the current implementation, relevant to any future work on this pipeline:
+Structural limitations that remain after the remediation pass, relevant to any future work:
 
-- **No durable deposit/withdrawal ledger.** Deposits are not persisted (`deposit.entity.ts` is an empty stub); the only record of an in-flight deposit is the in-memory queue (ETH) or Redis pending set (BTC) plus whatever the external client API stores. A crash between detection and successful withdrawal is not automatically recovered for ETH/TRON.
-- **No distributed queue or broker.** The deposit queue is a process-local array. In a multi-instance (PM2 cluster) deployment, only the instance whose monitor detects the block processes that deposit — there is no shared work queue coordinating across instances, and no instance-level failover for an in-flight item.
-- **`synchronize: true` with no migrations.** Schema changes to `Wallet` apply automatically on boot; there is no migration history or rollback path.
-- **Auth guards disabled.** `ApiKeyGuard` and `IpWhitelistGuard` exist but are commented out on `WalletController`, so wallet management is currently unauthenticated at the HTTP layer (outside the scope of the fund-movement pipeline itself, but relevant to the integrity of the address set it consumes).
-- **Only `Chain.ETH` is actually monitored** despite EVM sibling chains being fully configured; enabling them is a matter of uncommenting `ethMonitorService.start(...)` calls, but each additional chain adds another independent WebSocket subscription and reconnect loop to operate.
+- **No shared work broker.** Each instance still has a process-local queue. `MONITOR_LEADER_ELECTION` ensures only one instance scans, and the ledger makes duplicate detection harmless, but there is no cross-instance failover for an in-flight sweep: a deposit left `SWEEPING` by a crashed instance needs human reconciliation, never a blind retry.
+- **No reorg re-validation before sweeping.** Confirmation depth is the protection; the stored `blockHash` enables after-the-fact detection but nothing re-checks it at send time.
+- **The destination hot-wallet key still crosses a network boundary.** `withdraw_wallets` returns it per deposit. The transport is now authenticated, TLS-enforced and validated, but the correct fix is signing locally or via a signing service.
+- **The sweep amount is the deposit amount, not the on-chain balance.** If a wallet holds a prior balance, that residue is not swept; reconciliation reports it rather than moving it, because changing what is swept alters the accounting already reported to the client API.
+- **The baseline migration is unverified** against a real Postgres.
+- **No end-to-end test coverage.** Booting `AppModule` requires live Postgres and Redis.
