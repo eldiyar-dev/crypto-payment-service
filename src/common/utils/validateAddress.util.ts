@@ -1,8 +1,7 @@
-import { Chain } from '@/common/enums'
+import { Chain, EVM_CHAINS } from '@/common/enums'
 import * as bitcoin from 'bitcoinjs-lib'
 import { ethers } from 'ethers'
 import { TronWeb } from 'tronweb'
-import { isEvmNetwork } from './detectBlockchainNetwork.util'
 
 /**
  * Validates a Bitcoin mainnet address by decoding it to an output script.
@@ -34,7 +33,9 @@ const isValidBtcAddress = (address: string): boolean => {
 export const isValidChainAddress = (address: string, chain: Chain): boolean => {
   if (!address || typeof address !== 'string') return false
 
-  if (isEvmNetwork(chain)) return ethers.isAddress(address)
+  // EVM_CHAINS directly rather than isEvmNetwork(), to keep this module free of a cycle with
+  // detectBlockchainNetwork.util, which now depends on this one.
+  if (EVM_CHAINS.includes(chain)) return ethers.isAddress(address)
   if (chain === Chain.BTC) return isValidBtcAddress(address)
   if (chain === Chain.TRON) return TronWeb.isAddress(address)
 

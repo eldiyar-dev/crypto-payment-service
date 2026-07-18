@@ -24,7 +24,12 @@ export class StoreWalletUseCase {
       // wallet so the EVM duplicates below share the same ciphertext.
       const privateKey = this.aesCipherService.encrypt(wallet.privateKey)
 
-      if (isEvmNetwork(wallet.chain) || wallet.chain === Chain.BTC) {
+      // Only EVM addresses may be case-normalised. Bitcoin base58check addresses (1..., 3...)
+      // are case-sensitive, so lowercasing one produces a different, invalid address: it would
+      // never match an incoming deposit's output address, and would never match the address
+      // derived from its own key at sweep time. Bech32 is lowercase already, so nothing is
+      // gained by normalising BTC at all.
+      if (isEvmNetwork(wallet.chain)) {
         return {
           ...wallet,
           privateKey,
