@@ -81,6 +81,16 @@ export class Deposit {
   @Column({ type: String, nullable: true })
   failureReason?: string | null
 
+  /**
+   * When the client API was successfully told about this deposit.
+   *
+   * The notification is fire-and-forget so it cannot block the sweep, which means a failed
+   * POST previously left the client API's view silently diverged from what actually happened
+   * on-chain. Recording it lets reconciliation re-notify instead.
+   */
+  @Column({ type: 'timestamp', nullable: true })
+  clientNotifiedAt?: Date | null
+
   @CreateDateColumn({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', precision: 0 })
   created_at?: Date
 

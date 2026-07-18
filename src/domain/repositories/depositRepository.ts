@@ -2,7 +2,7 @@ import { Chain, Currency } from '@/common/enums'
 import { Deposit, DepositStatus } from '@/domain/entities/deposit.entity'
 import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { Repository } from 'typeorm'
+import { IsNull, LessThan, Repository } from 'typeorm'
 
 export type TClaimDepositParams = {
   chain: Chain
@@ -76,6 +76,21 @@ export class DepositRepository extends Repository<Deposit> {
     // Postgres truncates nothing for us; keep the reason bounded so a huge RPC error body
     // cannot bloat the row.
     await this.update({ id }, { status: DepositStatus.FAILED, failureReason: failureReason.slice(0, 1000) })
+  }
+
+  async markClientNotified(id: number): Promise<void> {
+    await this.update({ id }, { clientNotifiedAt: new Date() })
+  }
+
+  /**
+   * Deposits the client API was never successfully told about.
+   *
+   * At-least-once delivery: re-notifying is safe because the payload carries the txHash, so a
+   * duplicate is identifiable downstream, whereas a lost notification leaves the client API's
+   * view permanently diverged from the chain.
+   */
+  async findUnnotified(olderThan: Date, take = 100): Promise<Deposit[]> {
+    return this.find({ where: { clientNotifiedAt: IsNull(), created_at: LessThan(olderThan) }, order: { created_at: 'ASC' }, take })
   }
 
   /**

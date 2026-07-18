@@ -71,6 +71,7 @@ export class ProcessDepositUseCase {
     // down either: an unhandled rejection here is fatal under Node's default settings.
     void this.depositService
       .notifyNewDeposit({ currency, address, amount, decimals, txHash, chain })
+      .then(() => this.depositRepository.markClientNotified(deposit.id!))
       .catch((error: Error) => this.logger.error(`Failed to notify client API of deposit #${deposit.id}: ${error.message}`))
 
     const claimed = await this.depositRepository.markSweeping(deposit.id)

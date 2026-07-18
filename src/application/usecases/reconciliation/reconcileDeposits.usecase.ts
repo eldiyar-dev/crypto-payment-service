@@ -5,6 +5,7 @@ import { DepositRepository } from '@/domain/repositories/depositRepository'
 import { BtcInfoService } from '@/infrastructure/blockchain/btc'
 import { EthInfoService } from '@/infrastructure/blockchain/eth/ethInfo.service'
 import { TronInfoService } from '@/infrastructure/blockchain/tron'
+import { DepositService } from '@/infrastructure/clientApi/deposit.service'
 import { ReportService } from '@/infrastructure/clientApi/report.service'
 import { TConfiguration } from '@/infrastructure/config/configuration'
 import { Injectable, Logger, OnApplicationShutdown, OnModuleInit } from '@nestjs/common'
@@ -40,6 +41,7 @@ export class ReconcileDepositsUseCase implements OnModuleInit, OnApplicationShut
   constructor(
     private readonly depositRepository: DepositRepository,
     private readonly reportService: ReportService,
+    private readonly depositService: DepositService,
     private readonly ethInfoService: EthInfoService,
     private readonly tronInfoService: TronInfoService,
     private readonly btcInfoService: BtcInfoService,
@@ -61,6 +63,7 @@ export class ReconcileDepositsUseCase implements OnModuleInit, OnApplicationShut
   async run(): Promise<void> {
     try {
       await this.reportStateCounts()
+      await this.retryMissedNotifications()
 
       const unresolved = await this.findUnresolved()
       if (!unresolved.length) return
@@ -72,6 +75,40 @@ export class ReconcileDepositsUseCase implements OnModuleInit, OnApplicationShut
       }
     } catch (error) {
       this.logger.error(`Reconciliation pass failed: ${(error as Error).message}`)
+    }
+  }
+
+  /**
+   * Re-sends deposit notifications the client API never acknowledged.
+   *
+   * notifyNewDeposit is deliberately fire-and-forget so it cannot block or fail a sweep, which
+   * meant a failed POST silently left the client API's view diverged from what actually
+   * happened on-chain, with nothing anywhere recording the gap. Delivery is now at-least-once:
+   * the payload carries the txHash, so a duplicate is identifiable downstream, whereas a lost
+   * notification is not recoverable.
+   */
+  private async retryMissedNotifications(): Promise<void> {
+    const unnotified = await this.depositRepository.findUnnotified(new Date(Date.now() - STUCK_AFTER_MS))
+    if (!unnotified.length) return
+
+    this.logger.warn(`Reconciliation: re-notifying client API of ${unnotified.length} deposit(s)`)
+
+    for (const deposit of unnotified) {
+      const amount = BigInt(deposit.amountBaseUnits)
+
+      try {
+        await this.depositService.notifyNewDeposit({
+          currency: deposit.currency,
+          address: deposit.address,
+          amount,
+          decimals: deposit.decimals,
+          txHash: deposit.txHash,
+          chain: deposit.chain,
+        })
+        await this.depositRepository.markClientNotified(deposit.id!)
+      } catch (error) {
+        this.logger.error(`Failed to re-notify deposit #${deposit.id}: ${(error as Error).message}`)
+      }
     }
   }
 
