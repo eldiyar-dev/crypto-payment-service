@@ -1,4 +1,5 @@
 import { TConfiguration } from '@/infrastructure/config/configuration'
+import * as crypto from 'crypto'
 import { ConfigService } from '@nestjs/config'
 import { AESCipherService } from './aes.service'
 
@@ -27,6 +28,60 @@ describe('AESCipherService', () => {
     it('cannot be decrypted with a different secret', () => {
       const other = new AESCipherService(configStub({ private_key_secret: 'a-different-secret', allow_legacy_plaintext_keys: false }))
       expect(() => other.decrypt(service.encrypt(EVM_KEY))).toThrow()
+    })
+  })
+
+  describe('AES-256-GCM envelope', () => {
+    it('emits the versioned v2 envelope', () => {
+      expect(service.encrypt(EVM_KEY).startsWith('v2:')).toBe(true)
+    })
+
+    it('uses a different salt per record, so no two records share a key', () => {
+      const [, saltA] = service.encrypt(EVM_KEY).split(':')
+      const [, saltB] = service.encrypt(EVM_KEY).split(':')
+      expect(saltA).not.toBe(saltB)
+    })
+
+    // CBC is malleable: with database write access an attacker could alter a ciphertext and
+    // the service would decrypt the result without noticing. GCM's tag makes that fail closed.
+    it('rejects a tampered ciphertext instead of returning altered key material', () => {
+      const parts = service.encrypt(EVM_KEY).split(':')
+      const cipherHex = parts[4]
+      // Flip one byte of ciphertext.
+      const flipped = (parseInt(cipherHex.slice(0, 2), 16) ^ 0xff).toString(16).padStart(2, '0')
+      parts[4] = flipped + cipherHex.slice(2)
+
+      expect(() => service.decrypt(parts.join(':'))).toThrow()
+    })
+
+    it('rejects a tampered auth tag', () => {
+      const parts = service.encrypt(EVM_KEY).split(':')
+      parts[3] = 'f'.repeat(32)
+      expect(() => service.decrypt(parts.join(':'))).toThrow()
+    })
+  })
+
+  describe('legacy v1 (CBC) envelopes', () => {
+    // Rows written by the previous implementation must stay spendable, or their funds strand.
+    const legacyV1 = (secret: string, plaintext: string): string => {
+      const key = crypto.scryptSync(secret, 'salt', 32)
+      const iv = crypto.randomBytes(16)
+      const cipher = crypto.createCipheriv('aes-256-cbc', key, iv)
+      return iv.toString('hex') + ':' + cipher.update(plaintext, 'utf8', 'hex') + cipher.final('hex')
+    }
+
+    it('still decrypts a v1 envelope', () => {
+      expect(service.decrypt(legacyV1(SECRET, TRON_KEY))).toBe(TRON_KEY)
+    })
+
+    it('recognises a v1 envelope as encrypted', () => {
+      expect(service.isEncrypted(legacyV1(SECRET, TRON_KEY))).toBe(true)
+    })
+
+    it('flags v1 rows as needing re-encryption, and v2 rows as not', () => {
+      expect(service.needsReEncryption(legacyV1(SECRET, TRON_KEY))).toBe(true)
+      expect(service.needsReEncryption(service.encrypt(TRON_KEY))).toBe(false)
+      expect(service.needsReEncryption(TRON_KEY)).toBe(false)
     })
   })
 
