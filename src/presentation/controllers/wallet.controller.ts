@@ -22,7 +22,7 @@ export class WalletController {
   @ApiOkResponse({ type: CreateWalletsResponseDto })
   @Post('wallets')
   @HttpCode(HttpStatus.CREATED)
-  createWallets(@Request() req: IRequest, @Body() body: CreateWalletDto): CreateWalletsResponseDto {
+  async createWallets(@Request() req: IRequest, @Body() body: CreateWalletDto): Promise<CreateWalletsResponseDto> {
     try {
       const { clientId } = req
       this.logger.log(`post request received from clientId: ${clientId}`)
@@ -54,7 +54,8 @@ export class WalletController {
         validWallets.push(wallet)
       }
 
-      if (validWallets.length) this.storeWalletUseCase.addWallets(validWallets)
+      // Awaited: the 201 must mean the wallets are actually stored and monitored.
+      if (validWallets.length) await this.storeWalletUseCase.addWallets(validWallets)
 
       if (invalidWallets.length) {
         return {
