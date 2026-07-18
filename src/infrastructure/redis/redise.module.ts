@@ -1,4 +1,5 @@
 import { Global, Module } from '@nestjs/common'
+import { LeaderElectionService } from './leaderElection.service'
 import { redisClientFactory } from './redis.client.factory'
 import { RedisService } from './redis.service'
 import { RedisRepository } from './repository/redis.repository'
@@ -7,7 +8,7 @@ import { RedisRepository } from './repository/redis.repository'
 @Module({
   imports: [],
   controllers: [],
-  providers: [redisClientFactory, RedisRepository, RedisService],
-  exports: [RedisService],
+  providers: [redisClientFactory, RedisRepository, RedisService, LeaderElectionService],
+  exports: [RedisService, LeaderElectionService],
 })
 export class RedisModule {}

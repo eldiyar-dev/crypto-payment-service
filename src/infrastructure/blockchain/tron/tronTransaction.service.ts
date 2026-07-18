@@ -1,18 +1,22 @@
+import { isRetryableSendError, SendOutcome, sendFailed, sendSucceeded } from '@/common/utils'
 import { TConfiguration } from '@/infrastructure/config/configuration'
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { TronWeb } from 'tronweb'
+import { TronInfoService } from './tronInfo.service'
 
 type SendTRC20TokenParams = {
   toAddress: string
-  amount: number
+  /** Amount in the token's base units (USDT: 1e-6 TRC20 units). Exact. */
+  amount: bigint
   privateKey: string
   contractAddress: string
 }
 
 type SendTRXParams = {
   toAddress: string
-  amount: number
+  /** Amount in SUN (1 TRX = 1_000_000 SUN). Exact. */
+  amount: bigint
   privateKey: string
 }
 
@@ -20,40 +24,51 @@ type SendTRXParams = {
 export class TronTransactionService {
   private readonly logger = new Logger(TronTransactionService.name)
 
-  constructor(private readonly configService: ConfigService<TConfiguration>) {}
+  constructor(
+    private readonly configService: ConfigService<TConfiguration>,
+    private readonly tronInfoService: TronInfoService,
+  ) {}
+
+  /**
+   * How long to wait for an outbound transfer to be mined and confirmed successful.
+   * TRON blocks are ~3s, so 40 polls is ample for a transfer that is going to land.
+   */
+  private readonly CONFIRMATION_ATTEMPTS = 40
 
   private tronWebClass() {
     return new TronWeb({ fullHost: this.configService.get('tron_host_url')! })
   }
 
   /**
-   * TRX fee in TRX
-   */
-  private readonly TRX_FEE = 0.5
-
-  /**
-   * Send TRX to an address with 0.5 TRX for fee
+   * Send exactly `amount` SUN to an address.
+   *
+   * This used to subtract a hardcoded 0.5 TRX from every send, which silently shorted every
+   * customer TRX withdrawal by 0.5 TRX and drove the smaller split leg negative for small
+   * deposits. Fee reserves are the caller's concern — see
+   * `SplitWithdrawUseCase.sendTrxForFeeOrActiveAccount`.
+   *
    * @param toAddress - The address to send the TRX to
-   * @param amount - The amount of TRX to send
+   * @param amount - The amount of TRX to send, in SUN
    * @param privateKey - The private key of the account to send the TRX from
    * @returns The transaction hash of the TRX sent
    */
-  async sendTRX({ toAddress, amount, privateKey }: SendTRXParams): Promise<string | null> {
+  async sendTRX({ toAddress, amount, privateKey }: SendTRXParams): Promise<SendOutcome> {
     try {
       const tronWeb = this.tronWebClass()
 
       // Set the default address for this transaction
       tronWeb.setPrivateKey(privateKey)
 
-      // Convert amount to SUN (1 TRX = 1,000,000 SUN)
-      let amountInSun = tronWeb.toBigNumber(amount).multipliedBy(1_000_000).integerValue(tronWeb.BigNumber.ROUND_FLOOR)
-
-      // Calculate the fee
-      const feeInSun = tronWeb.toBigNumber(this.TRX_FEE).multipliedBy(1_000_000).integerValue(tronWeb.BigNumber.ROUND_FLOOR) // 0.5 TRX fee
-      amountInSun = amountInSun.minus(feeInSun)
+      // Already in SUN — exact integer arithmetic, sent as requested.
+      const amountInSun = amount
+      if (amountInSun <= 0n) {
+        const message = `Refusing to send a non-positive TRX amount to ${toAddress}: ${amountInSun} SUN`
+        this.logger.error(message)
+        return sendFailed(message)
+      }
 
       // Create transaction
-      const transaction = await tronWeb.transactionBuilder.sendTrx(toAddress, amountInSun.toNumber())
+      const transaction = await tronWeb.transactionBuilder.sendTrx(toAddress, Number(amountInSun))
 
       // Sign transaction
       const signedTx = await tronWeb.trx.sign(transaction, privateKey)
@@ -62,26 +77,38 @@ export class TronTransactionService {
       const receipt = await tronWeb.trx.sendRawTransaction(signedTx)
 
       if (!receipt.result) {
-        this.logger.error(`TRX transfer to ${toAddress} failed receipt:`, receipt)
-        return null
+        const message = `TRX broadcast to ${toAddress} was rejected: ${receipt.message ?? 'no reason given'}`
+        this.logger.error(message)
+        return sendFailed(message, isRetryableSendError(message))
       }
 
-      return receipt.txid
+      // `receipt.result` only acknowledges the broadcast. Wait for inclusion so that a returned
+      // hash means the same thing on every path through this service: confirmed on-chain.
+      const blockNumber = await this.tronInfoService.waitForTronTxConfirmation(receipt.txid, this.CONFIRMATION_ATTEMPTS)
+      if (!blockNumber) {
+        const message = `TRX transfer to ${toAddress} was broadcast as ${receipt.txid} but did not confirm successfully`
+        this.logger.error(message)
+        // Broadcast but unconfirmed: funding and retrying could double-send, so terminal.
+        return sendFailed(message)
+      }
+
+      return sendSucceeded(receipt.txid)
     } catch (error) {
-      this.logger.error(`TRX transfer to ${toAddress} failed: ${error.message}`)
-      return null
+      const message = (error as Error).message
+      this.logger.error(`TRX transfer to ${toAddress} failed: ${message}`)
+      return sendFailed(message, isRetryableSendError(message))
     }
   }
 
   /**
    * Send a TRC20 token to an address
    * @param toAddress - The address to send the TRC20 token to
-   * @param amount - The amount of TRC20 token to send
+   * @param amount - The amount of TRC20 token to send, in base units
    * @param privateKey - The private key of the account to send the TRC20 token from
    * @param contractAddress - The address of the TRC20 token contract
    * @returns The transaction hash of the TRC20 token sent
    */
-  async sendTRC20Token({ toAddress, amount, privateKey, contractAddress }: SendTRC20TokenParams): Promise<string | null> {
+  async sendTRC20Token({ toAddress, amount, privateKey, contractAddress }: SendTRC20TokenParams): Promise<SendOutcome> {
     try {
       const tronWeb = this.tronWebClass()
 
@@ -90,24 +117,36 @@ export class TronTransactionService {
 
       const contract = await tronWeb.contract().at(contractAddress)
 
-      // Convert amount to correct format (considering token decimals)
-      const amountInWei = tronWeb
-        .toBigNumber(amount)
-        .multipliedBy(10 ** 6)
-        .integerValue(tronWeb.BigNumber.ROUND_FLOOR)
+      // Already in the token's base units — pass through exactly.
+      const amountInWei = amount
 
       // Create transaction
-      const txHash = (await contract.transfer(toAddress, amountInWei.toString()).send({ feeLimit: 100000000, callValue: 0 })) satisfies string
+      const txHash = (await contract.transfer(toAddress, amountInWei.toString()).send({ feeLimit: 100000000, callValue: 0 })) as string
 
       if (!txHash) {
-        this.logger.error(`TRC20 transfer to ${toAddress} failed txHash:`, txHash)
-        return null
+        const message = `TRC20 broadcast to ${toAddress} returned no transaction id`
+        this.logger.error(message)
+        return sendFailed(message, true)
       }
 
-      return txHash
+      // A broadcast is not a completed transfer. Out-of-energy is the exact failure this
+      // pipeline is built around, and it reverts *after* being included in a block — returning
+      // the txid straight from .send() reported those reverts as successful withdrawals and
+      // skipped the energy top-up and retry.
+      const blockNumber = await this.tronInfoService.waitForTronTxConfirmation(txHash, this.CONFIRMATION_ATTEMPTS)
+      if (!blockNumber) {
+        const message = `TRC20 transfer to ${toAddress} was broadcast as ${txHash} but did not confirm successfully`
+        this.logger.error(message)
+        // Most often out-of-energy, which the energy top-up can resolve.
+        return sendFailed(message, true)
+      }
+
+      this.logger.log(`TRC20 transfer to ${toAddress} confirmed in block ${blockNumber} txHash: ${txHash}`)
+      return sendSucceeded(txHash)
     } catch (error) {
-      this.logger.error(`TRC20 transfer to ${toAddress} failed: ${error.message}`)
-      return null
+      const message = (error as Error).message
+      this.logger.error(`TRC20 transfer to ${toAddress} failed: ${message}`)
+      return sendFailed(message, isRetryableSendError(message))
     }
   }
 }

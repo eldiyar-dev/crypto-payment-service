@@ -1,5 +1,6 @@
 import { Chain, EVM_CHAINS } from '@/common/enums'
 import { EvmNetwork } from '../interfaces'
+import { isValidChainAddress } from './validateAddress.util'
 
 /**
  * Detects the blockchain network type based on a cryptocurrency address.
@@ -25,26 +26,12 @@ export const detectBlockchainNetwork = (address: string): Chain | null => {
 
   const addr = address.trim()
 
-  // Ethereum and EVM-compatible networks (0x...)
-  if (/^0x[a-fA-F0-9]{40}$/.test(addr)) {
-    return Chain.ETH
-  }
-
-  // Bitcoin networks
-  if (/^[13][a-km-zA-HJ-NP-Z1-9]{25,34}$/.test(addr)) {
-    return Chain.BTC
-  }
-  if (/^bc1[a-z0-9]{39,59}$/.test(addr)) {
-    return Chain.BTC
-  }
-  if (/^3[a-km-zA-HJ-NP-Z1-9]{25,34}$/.test(addr)) {
-    return Chain.BTC
-  }
-
-  // Tron
-  if (/^T[A-Za-z1-9]{33}$/.test(addr)) {
-    return Chain.TRON
-  }
+  // Decode-and-verify rather than pattern-match. The previous regexes checked shape only:
+  // no EIP-55 checksum for EVM, no base58check for BTC or TRON, and the TRON pattern
+  // ^T[A-Za-z1-9]{33}$ admitted O, I and l, which are not in the base58 alphabet at all.
+  if (isValidChainAddress(addr, Chain.ETH)) return Chain.ETH
+  if (isValidChainAddress(addr, Chain.BTC)) return Chain.BTC
+  if (isValidChainAddress(addr, Chain.TRON)) return Chain.TRON
 
   return null
 }

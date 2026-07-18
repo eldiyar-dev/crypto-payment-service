@@ -1,4 +1,5 @@
 import { Chain, Currency } from '@/common/enums'
+import { SendOutcome, sendFailed } from '@/common/utils'
 import { EvmCoin, EvmNetwork } from '@/common/interfaces'
 import { Injectable } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
@@ -10,10 +11,10 @@ import { TronTransactionService } from '../tron/tronTransaction.service'
 type TSendFunds = {
   currency: Currency
   toAddress: string
-  amount: number
+  /** Amount in the currency's base units (wei / satoshi / SUN / token base units). Exact. */
+  amount: bigint
   privateKey: string
   chain: Chain
-  nonce?: number
 }
 
 @Injectable()
@@ -33,7 +34,15 @@ export class BlockchainTransactionService {
     return this.configService.get(`evmNetworks.${evmNetwork}.coinContractAddress.${coin}`, { infer: true })!
   }
 
-  sendFunds({ currency, toAddress, amount, privateKey, chain, nonce }: TSendFunds) {
+  /**
+   * Token decimals differ per network — USDT is 6 decimals on Ethereum but 18 on BSC — so they
+   * are read from config rather than hardcoded.
+   */
+  private evmCoinDecimals(evmNetwork: EvmNetwork, coin: EvmCoin) {
+    return this.configService.get(`evmNetworks.${evmNetwork}.coinDecimals.${coin}`, { infer: true })!
+  }
+
+  sendFunds({ currency, toAddress, amount, privateKey, chain }: TSendFunds): Promise<SendOutcome> {
     switch (chain) {
       case Chain.BTC:
         return this.btcTransactionService.sendBTC({ toAddress, amount, privateKey })
@@ -44,18 +53,21 @@ export class BlockchainTransactionService {
       }
 
       default: {
-        if (currency === Currency.ETH) return this.ethTransactionService.sendETH({ privateKey, toAddress, amount, nonce, evmNetwork: chain })
+        if (currency === Currency.ETH) return this.ethTransactionService.sendETH({ privateKey, toAddress, amount, evmNetwork: chain })
         if (currency === Currency.USDT)
           return this.ethTransactionService.sendERC20Token({
             toAddress,
             amount,
             privateKey,
             contractAddress: this.evmCoinContractAddress(chain, 'USDT'),
-            decimals: 6,
-            nonce,
+            decimals: this.evmCoinDecimals(chain, 'USDT'),
             evmNetwork: chain,
             coin: 'USDT',
           })
+
+        // Previously fell off the end returning undefined, which the caller read as a failed
+        // send with no explanation.
+        return Promise.resolve(sendFailed(`Unsupported currency ${currency} on ${chain}`))
       }
     }
   }

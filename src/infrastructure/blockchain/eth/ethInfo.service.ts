@@ -3,6 +3,7 @@ import { TConfiguration } from '@/infrastructure/config/configuration'
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { ethers } from 'ethers'
+import { EvmProviderFactory } from './evmProvider.factory'
 
 @Injectable()
 export class EthInfoService {
@@ -12,120 +13,97 @@ export class EthInfoService {
 
   private readonly ERC20_BALANCE_ABI = ['function balanceOf(address owner) view returns (uint256)']
 
-  constructor(private readonly configService: ConfigService<TConfiguration>) {}
+  constructor(
+    private readonly configService: ConfigService<TConfiguration>,
+    private readonly evmProviderFactory: EvmProviderFactory,
+  ) {}
 
   private readonly coinContractAddress = (evmNetwork: EvmNetwork, coin: EvmCoin): string =>
     this.configService.get(`evmNetworks.${evmNetwork}.coinContractAddress.${coin}`, { infer: true })!
 
-  private readonly provider = (evmNetwork: EvmNetwork): ethers.JsonRpcProvider =>
-    new ethers.JsonRpcProvider(this.configService.get(`evmNetworks.${evmNetwork}.rpcUrl`, { infer: true }))
-
-  // /**
-  //  * Get the ETH balance for a given address
-  //  * @param address - The Ethereum address to check
-  //  * @param providerUrl - The Ethereum node provider URL
-  //  * @returns The balance in ETH as a string
-  //  */
-  // async getETHBalance(address: string, evmNetwork: EvmNetwork): Promise<string> {
-  //   try {
-  //     const provider = this.provider(evmNetwork)
-  //     const balance = await provider.getBalance(address)
-  //     return ethers.formatEther(balance)
-  //   } catch (error) {
-  //     this.logger.error(`Failed to get ETH balance for address ${address}: ${error.message}`)
-  //     throw error
-  //   }
-  // }
-
-  // /**
-  //  * Get the ERC20 token balance for a given address
-  //  * @param address - The Ethereum address to check
-  //  * @param contractAddress - The ERC20 token contract address
-  //  * @param providerUrl - The Ethereum node provider URL
-  //  * @returns The token balance as a string
-  //  */
-  // async getERC20Balance(address: string, contractAddress: string, evmNetwork: EvmNetwork): Promise<string> {
-  //   try {
-  //     const provider = this.provider(evmNetwork)
-  //     const contract = new ethers.Contract(contractAddress, this.ERC20_BALANCE_ABI, provider)
-  //     const balance = (await contract.balanceOf(address)) as bigint
-  //     return ethers.formatUnits(balance.toString(), 6) // For USDT typically 6 decimals
-  //   } catch (error) {
-  //     this.logger.error(`Failed to get ERC20 balance for address ${address}: ${error.message}`)
-  //     throw error
-  //   }
-  // }
-
-  // /**
-  //  * Get the nonce for a given address
-  //  * @param address - The Ethereum address to check
-  //  * @returns The nonce as a number
-  //  */
-  // async getNonce(address: string, evmNetwork: EvmNetwork): Promise<number> {
-  //   const provider = this.provider(evmNetwork)
-  //   return provider.getTransactionCount(address, 'latest')
-  // }
+  /** Cached, with failover/quorum when several RPC endpoints are configured. */
+  private readonly provider = (evmNetwork: EvmNetwork): ethers.Provider => this.evmProviderFactory.get(evmNetwork)
 
   /**
-   * Get the USDT gas price in ETH for a given contract, to address, and amount
-   * @param privateKey - The private key of the wallet
-   * @param toAddress - The address to send the transaction to
-   * @param amount - The amount to send
-   * @param evmNetwork - EVM network
-   * @returns The gas price in ETH as a number
+   * Native balance in wei.
+   *
+   * Used by reconciliation to detect a wallet still holding funds after a sweep was supposed
+   * to complete. Returns null on failure rather than throwing, so one unreachable RPC does not
+   * abort a whole reconciliation pass.
    */
-  async getUSDTGasPriceInEth(privateKey: string, toAddress: string, amount: number, evmNetwork: EvmNetwork): Promise<number | null> {
+  async getNativeBalance(address: string, evmNetwork: EvmNetwork): Promise<bigint | null> {
     try {
-      const provider = this.provider(evmNetwork)
-      const wallet = new ethers.Wallet(privateKey, provider)
-      const contract = new ethers.Contract(this.coinContractAddress(evmNetwork, 'USDT'), this.USDT_ABI, wallet)
-
-      const roundedAmount = +Number(amount).toFixed(6)
-      const amountInWei = ethers.parseUnits(roundedAmount.toString(), 6)
-
-      const gasLimit = await contract.transfer.estimateGas(toAddress, amountInWei)
-
-      const { maxFeePerGas, maxPriorityFeePerGas } = await provider.getFeeData()
-
-      const gasPrice = maxFeePerGas ?? maxPriorityFeePerGas ?? 0n
-      const totalFee = gasPrice * gasLimit
-
-      const totalFeeEth = ethers.formatEther(totalFee)
-
-      return +totalFeeEth
+      return await this.provider(evmNetwork).getBalance(address)
     } catch (error) {
-      this.logger.error(`Failed to get gas price in ETH for address ${toAddress} and amount ${amount}: ${error.message}`)
+      this.logger.error(`Failed to get native balance for address ${address}: ${error.message}`)
+      return null
+    }
+  }
+
+  /** ERC20 balance in the token's base units. */
+  async getERC20Balance(address: string, contractAddress: string, evmNetwork: EvmNetwork): Promise<bigint | null> {
+    try {
+      const contract = new ethers.Contract(contractAddress, this.ERC20_BALANCE_ABI, this.provider(evmNetwork))
+      return (await contract.balanceOf(address)) as bigint
+    } catch (error) {
+      this.logger.error(`Failed to get ERC20 balance for address ${address}: ${error.message}`)
       return null
     }
   }
 
   /**
-   * Get the gas price in ETH for a native ETH transfer transaction
-   * @param privateKey - The private key of the wallet
-   * @param toAddress - The address to send ETH to
-   * @param amount - The amount of ETH to send (in ETH)
-   * @param evmNetwork - The EVM network
-   * @returns The gas price in ETH as a number
+   * Get the total gas cost, in wei, of a USDT transfer of `amount` base units
+   * @param fromAddress - The wallet that will actually send the transfer
+   * @param toAddress - The address to send the transaction to
+   * @param amount - The amount to send, in the token's base units
+   * @param evmNetwork - EVM network
+   * @returns The gas cost in wei, or null if estimation failed
    */
-  async getEthTransferGasPriceInEth(privateKey: string, toAddress: string, amount: number, evmNetwork: EvmNetwork): Promise<number | null> {
+  async getUSDTGasCostInWei(fromAddress: string, toAddress: string, amount: bigint, evmNetwork: EvmNetwork): Promise<bigint | null> {
     try {
       const provider = this.provider(evmNetwork)
-      const wallet = new ethers.Wallet(privateKey, provider)
-      const value = ethers.parseEther(amount.toString())
+      const contract = new ethers.Contract(this.coinContractAddress(evmNetwork, 'USDT'), this.USDT_ABI, provider)
 
-      // Create a transaction object for a simple ETH transfer
-      const gasLimit = await wallet.estimateGas({ to: toAddress, value })
+      // `from` is the source wallet performing the real transfer. Estimating from the fee
+      // wallet in the opposite direction gave a materially different number: an ERC-20 SSTORE
+      // to a zero balance costs ~20k gas versus ~5k to a non-zero one.
+      const gasLimit = await contract.transfer.estimateGas(toAddress, amount, { from: fromAddress })
+
+      const { maxFeePerGas, maxPriorityFeePerGas } = await provider.getFeeData()
+
+      const gasPrice = maxFeePerGas ?? maxPriorityFeePerGas ?? 0n
+
+      return gasPrice * gasLimit
+    } catch (error) {
+      this.logger.error(`Failed to get gas cost for address ${toAddress} and amount ${amount}: ${error.message}`)
+      return null
+    }
+  }
+
+  /**
+   * Get the total gas cost, in wei, of a native transfer of `amount` wei
+   * @param fromAddress - The wallet that will actually send the transfer
+   * @param toAddress - The address to send ETH to
+   * @param amount - The amount to send, in wei
+   * @param evmNetwork - The EVM network
+   * @returns The gas cost in wei, or null if estimation failed
+   */
+  async getEthTransferGasCostInWei(fromAddress: string, toAddress: string, amount: bigint, evmNetwork: EvmNetwork): Promise<bigint | null> {
+    try {
+      const provider = this.provider(evmNetwork)
+
+      // Estimated for the source wallet's outbound transfer, not the fee wallet's inbound one.
+      const gasLimit = await provider.estimateGas({ from: fromAddress, to: toAddress, value: amount })
 
       // Get current gas price data
       const { maxFeePerGas, gasPrice } = await provider.getFeeData()
 
       // For legacy networks, gasPrice is used; for EIP-1559, maxFeePerGas is used
       const usedGasPrice = maxFeePerGas ?? gasPrice ?? 0n
-      const totalFee = usedGasPrice * gasLimit
-      const totalFeeEth = ethers.formatEther(totalFee)
-      return +totalFeeEth
+
+      return usedGasPrice * gasLimit
     } catch (error) {
-      this.logger.error(`Failed to get ETH transfer gas price for address ${toAddress} and amount ${amount}: ${error.message}`)
+      this.logger.error(`Failed to get ETH transfer gas cost for address ${toAddress} and amount ${amount}: ${error.message}`)
       return null
     }
   }
