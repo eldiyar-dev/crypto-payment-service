@@ -8,8 +8,36 @@ export class RedisService {
 
   constructor(private readonly redisRepository: RedisRepository) {}
 
+  /**
+   * Loads the entire address set.
+   *
+   * O(N) and it materialises every member — at 3M addresses that is >100MB transferred and a
+   * 3M-element array allocated per call. Never use this on the detection path; use
+   * {@link isKnownAddress} or {@link filterKnownAddresses}, which is the only question the
+   * detection path actually asks.
+   */
   async getAddresses(chain: Chain): Promise<string[]> {
     return this.redisRepository.getArray(`${chain}:address`)
+  }
+
+  /** O(1) membership test — the detection path's primitive. */
+  async isKnownAddress(chain: Chain, address: string): Promise<boolean> {
+    return (await this.redisRepository.sismember(`${chain}:address`, address)) === 1
+  }
+
+  /**
+   * Batched membership test, for callers that already have a set of candidates (a Bitcoin
+   * block's outputs). One round trip instead of one per candidate.
+   *
+   * @returns Only those candidates that are monitored addresses.
+   */
+  async filterKnownAddresses(chain: Chain, addresses: string[]): Promise<Set<string>> {
+    if (!addresses.length) return new Set()
+
+    const unique = [...new Set(addresses)]
+    const flags = await this.redisRepository.smismember(`${chain}:address`, unique)
+
+    return new Set(unique.filter((_, index) => flags[index] === 1))
   }
 
   async addAddress(chain: Chain, address: string | string[]) {

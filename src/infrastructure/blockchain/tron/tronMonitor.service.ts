@@ -55,10 +55,6 @@ export class TronMonitorService {
   private isPolling = false
   private intervalId: NodeJS.Timeout | null = null
 
-  async getAddresses(): Promise<string[]> {
-    return this.redisService.getAddresses(Chain.TRON)
-  }
-
   onDeposit(callback: DepositCallback) {
     this.depositCallback = callback
   }
@@ -108,8 +104,6 @@ export class TronMonitorService {
         return
       }
 
-      const addresses = await this.getAddresses()
-
       const currentBlockNumber = currentBlock.block_header.raw_data.number
 
       // Only scan blocks already buried under the confirmation depth. Gating here rather than
@@ -147,7 +141,8 @@ export class TronMonitorService {
               // the loss from compounding through the split and the send.
               const trxAmountSun = BigInt(Math.trunc(Number(amount)))
 
-              if (!addresses.includes(toAddress)) continue
+              // O(1) membership test rather than a linear scan of every monitored address.
+              if (!(await this.redisService.isKnownAddress(Chain.TRON, toAddress))) continue
 
               if (trxAmountSun < parseBaseUnits(this.minTrxDeposit, TRX_DECIMALS)) continue
 
@@ -205,7 +200,7 @@ export class TronMonitorService {
                 continue
               }
 
-              if (!addresses.includes(toAddress)) continue
+              if (!(await this.redisService.isKnownAddress(Chain.TRON, toAddress))) continue
 
               if (usdtAmountBase < parseBaseUnits(this.minUsdtDeposit, TRON_USDT_DECIMALS)) continue
 

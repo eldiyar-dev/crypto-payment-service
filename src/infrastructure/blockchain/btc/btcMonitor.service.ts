@@ -45,10 +45,6 @@ export class BtcMonitorService {
     this.depositCallback = callback
   }
 
-  async getAddresses(): Promise<string[]> {
-    return this.redisService.getAddresses(Chain.BTC)
-  }
-
   async start() {
     // Moved off Redis: `allkeys-lru` could evict this key, silently resetting the scanner to
     // the chain tip and skipping every deposit in between.
@@ -104,17 +100,18 @@ export class BtcMonitorService {
         return
       }
 
-      const monitoredAddresses = await this.getAddresses()
-      if (!monitoredAddresses.length) return
-
-      const monitoredAddressesSet = new Set(monitoredAddresses)
+      // One batched SMISMEMBER for the whole block, instead of loading every monitored
+      // address and rebuilding a 3M-element Set per block.
+      const candidates = txs.flatMap((tx) => tx.vout.flatMap((output) => output.addresses ?? []))
+      const monitored = await this.redisService.filterKnownAddresses(Chain.BTC, candidates)
+      if (!monitored.size) return
 
       for (const tx of txs) {
         for (const output of tx.vout) {
           if (!output?.addresses?.length) continue
 
           for (const address of output.addresses) {
-            if (!monitoredAddressesSet.has(address)) continue
+            if (!monitored.has(address)) continue
 
             await this.redisService.setBtcPendingTransaction(tx.txid)
           }
@@ -143,16 +140,15 @@ export class BtcMonitorService {
   }
 
   private async checkDeposit(tx: AnkrTransaction) {
-    const monitoredAddresses = await this.getAddresses()
-    if (!monitoredAddresses.length) return
-
-    const monitoredAddressesSet = new Set(monitoredAddresses)
+    const candidates = tx.vout.flatMap((output) => output.addresses ?? [])
+    const monitored = await this.redisService.filterKnownAddresses(Chain.BTC, candidates)
+    if (!monitored.size) return
 
     for (const output of tx.vout) {
       if (!output?.addresses?.length) continue
 
       for (const address of output.addresses) {
-        if (!monitoredAddressesSet.has(address)) continue
+        if (!monitored.has(address)) continue
 
         // output.value is a satoshi string — keep it exact.
         const amountSatoshi = BigInt(output.value)

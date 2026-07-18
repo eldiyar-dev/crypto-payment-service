@@ -64,4 +64,14 @@ export class RedisRepository implements OnModuleDestroy {
   scard(key: RedisKey) {
     return this.redisClient.scard(key)
   }
+
+  /** O(1) membership test. */
+  sismember(key: RedisKey, value: string) {
+    return this.redisClient.sismember(key, value)
+  }
+
+  /** O(N) in the number of values tested, not in set cardinality. Requires Redis >= 6.2. */
+  smismember(key: RedisKey, values: string[]) {
+    return this.redisClient.smismember(key, ...values)
+  }
 }

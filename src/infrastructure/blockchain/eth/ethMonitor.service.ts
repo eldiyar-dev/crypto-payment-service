@@ -37,11 +37,6 @@ export class EthMonitorService {
 
   private depositCallback: DepositCallback
 
-  async getAddresses(): Promise<string[]> {
-    const addresses = await this.redisService.getAddresses(Chain.ETH)
-    return addresses.map((address) => address.toLowerCase())
-  }
-
   // ERC20 ABI for Transfer event
   private readonly ERC20_ABI = ['event Transfer(address indexed from, address indexed to, uint256 value)']
   private readonly erc20Interface = new ethers.Interface(this.ERC20_ABI)
@@ -254,13 +249,11 @@ export class EthMonitorService {
       return
     }
 
-    const addresses = await this.getAddresses()
-
-    await this.checkNativeTransfers(block, blockNumber, evmNetwork, addresses)
-    await this.checkTokenTransfers(provider, block, blockNumber, evmNetwork, addresses)
+    await this.checkNativeTransfers(block, blockNumber, evmNetwork)
+    await this.checkTokenTransfers(provider, block, blockNumber, evmNetwork)
   }
 
-  private async checkNativeTransfers(block: ethers.Block, blockNumber: number, evmNetwork: EvmNetwork, addresses: string[]) {
+  private async checkNativeTransfers(block: ethers.Block, blockNumber: number, evmNetwork: EvmNetwork) {
     const minDeposit = parseBaseUnits(this.minEthDeposit, ETH_DECIMALS)
 
     for (const tx of block.prefetchedTransactions) {
@@ -272,7 +265,9 @@ export class EthMonitorService {
       if (!tx?.to) continue
 
       const to = tx.to.toLowerCase()
-      if (!addresses.includes(to)) continue
+      // SISMEMBER: O(1) against the set, instead of loading every monitored address and
+      // linear-scanning the result once per transaction.
+      if (!(await this.redisService.isKnownAddress(Chain.ETH, to))) continue
 
       // tx.value is already exact wei — never narrow it through a float.
       const amountWei = tx.value
@@ -300,7 +295,7 @@ export class EthMonitorService {
    * could not be confirmation-gated. Querying a settled block also means the token path and
    * the native path share one confirmation rule and one scan checkpoint.
    */
-  private async checkTokenTransfers(provider: ethers.WebSocketProvider, block: ethers.Block, blockNumber: number, evmNetwork: EvmNetwork, addresses: string[]) {
+  private async checkTokenTransfers(provider: ethers.WebSocketProvider, block: ethers.Block, blockNumber: number, evmNetwork: EvmNetwork) {
     const decimals = this.getCoinDecimals(evmNetwork, 'USDT')
     const minDeposit = parseBaseUnits(this.minUsdtDeposit, decimals)
 
@@ -317,7 +312,7 @@ export class EthMonitorService {
         if (!parsed) continue
 
         const to = (parsed.args.to as string).toLowerCase()
-        if (!addresses.includes(to)) continue
+        if (!(await this.redisService.isKnownAddress(Chain.ETH, to))) continue
 
         const amountBase = ethers.toBigInt(parsed.args.value as ethers.BigNumberish)
         if (amountBase < minDeposit) continue
