@@ -1,5 +1,6 @@
 import { EvmCoin, EvmNetwork } from '@/common/interfaces'
 import { Wallet } from '@/domain/entities/wallet.entity'
+import { RedactingTypeOrmLogger } from '@/infrastructure/database/redacting-typeorm.logger'
 import type { ThrottlerModuleOptions } from '@nestjs/throttler'
 import type { TypeOrmModuleOptions } from '@nestjs/typeorm/dist'
 import type { RedisOptions } from 'ioredis'
@@ -18,7 +19,11 @@ export default () =>
       type: 'postgres',
       entities: [Wallet],
       synchronize: true,
-      logging: true,
+      // `logging: true` logged every statement with its bound parameters, writing plaintext
+      // Wallet.privateKey values into logs/*.log on each INSERT. Statement-level logging is now
+      // opt-in, and RedactingTypeOrmLogger drops parameters on every path including errors.
+      logging: process.env.TYPEORM_LOG_QUERIES === 'true' ? ['query', 'error', 'warn', 'schema', 'migration'] : ['error', 'warn', 'schema', 'migration'],
+      logger: new RedactingTypeOrmLogger(),
     },
     redis: {
       port: +process.env.REDIS_PORT!,
