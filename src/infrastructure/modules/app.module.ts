@@ -9,6 +9,7 @@ import { RedisModule } from '../redis/redise.module'
 import { BtcBlockhainModule, EthBlockhainModule, TronBlockhainModule } from './blockchain'
 import { BlockchainTransactionModule } from './common'
 import { HealthModule } from './health.module'
+import { LedgerModule } from './ledger.module'
 import { SplitWithdrawModule } from './splitWithdraw.module'
 import { WalletModule } from './wallet.module'
 
@@ -22,6 +23,7 @@ import { WalletModule } from './wallet.module'
     HttpModule.register({ global: true }),
     DatabaseModule,
     RedisModule,
+    LedgerModule,
     TronBlockhainModule,
     EthBlockhainModule,
     BtcBlockhainModule,

@@ -1,6 +1,6 @@
 import { Chain } from '@/common/enums/chain.enum'
 import { Injectable, Logger } from '@nestjs/common'
-import { RedisRepository } from 'src/infrastructure/redis/repository/redis.repository'
+import { RedisRepository } from '@/infrastructure/redis/repository/redis.repository'
 
 @Injectable()
 export class RedisService {

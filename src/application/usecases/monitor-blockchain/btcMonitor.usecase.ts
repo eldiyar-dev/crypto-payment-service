@@ -3,10 +3,9 @@ import { formatBaseUnits } from '@/common/utils'
 import { Wallet } from '@/domain/entities/wallet.entity'
 import { WalletRepository } from '@/domain/repositories/walletRepository'
 import { BtcMonitorService } from '@/infrastructure/blockchain/btc/btcMonitor.service'
-import { DepositService } from '@/infrastructure/clientApi/deposit.service'
 import { RedisService } from '@/infrastructure/redis/redis.service'
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
-import { SplitWithdrawUseCase } from '../autoWithdraw/splitWithdraw.usecase'
+import { ProcessDepositUseCase } from './processDeposit.usecase'
 
 @Injectable()
 export class BtcMonitorUseCase implements OnModuleInit {
@@ -14,9 +13,8 @@ export class BtcMonitorUseCase implements OnModuleInit {
 
   constructor(
     private readonly btcMonitorService: BtcMonitorService,
-    private readonly depositService: DepositService,
     private readonly walletRepository: WalletRepository,
-    private readonly splitWithdrawUseCase: SplitWithdrawUseCase,
+    private readonly processDepositUseCase: ProcessDepositUseCase,
     private readonly redisService: RedisService,
   ) {}
 
@@ -36,10 +34,9 @@ export class BtcMonitorUseCase implements OnModuleInit {
   execute(): void {
     this.logger.log('Starting BTC monitoring...')
 
-    this.btcMonitorService.onDeposit(({ address, amount, decimals, txHash }) => {
+    this.btcMonitorService.onDeposit(({ address, amount, decimals, txHash, outputIndex }) => {
       this.logger.log(`New BTC deposit: ${address} ${formatBaseUnits(amount, decimals)}`)
-      void this.depositService.notifyNewDeposit({ currency: Currency.BTC, address, amount, decimals, txHash, chain: Chain.BTC })
-      void this.splitWithdrawUseCase.execute({ currency: Currency.BTC, address, amount, decimals, chain: Chain.BTC })
+      void this.processDepositUseCase.execute({ chain: Chain.BTC, currency: Currency.BTC, address, amount, decimals, txHash, outputIndex })
     })
   }
 }

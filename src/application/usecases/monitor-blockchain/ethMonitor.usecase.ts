@@ -3,10 +3,9 @@ import { formatBaseUnits } from '@/common/utils'
 import { Wallet } from '@/domain/entities/wallet.entity'
 import { WalletRepository } from '@/domain/repositories/walletRepository'
 import { EthMonitorService } from '@/infrastructure/blockchain/eth/ethMonitor.service'
-import { DepositService } from '@/infrastructure/clientApi/deposit.service'
 import { RedisService } from '@/infrastructure/redis/redis.service'
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
-import { SplitWithdrawUseCase } from '../autoWithdraw/splitWithdraw.usecase'
+import { ProcessDepositUseCase } from './processDeposit.usecase'
 
 @Injectable()
 export class EthMonitorUseCase implements OnModuleInit {
@@ -35,9 +34,8 @@ export class EthMonitorUseCase implements OnModuleInit {
 
   constructor(
     private readonly ethMonitorService: EthMonitorService,
-    private readonly depositService: DepositService,
     private readonly walletRepository: WalletRepository,
-    private readonly splitWithdrawUseCase: SplitWithdrawUseCase,
+    private readonly processDepositUseCase: ProcessDepositUseCase,
     private readonly redisService: RedisService,
   ) {}
 
@@ -64,12 +62,11 @@ export class EthMonitorUseCase implements OnModuleInit {
   execute(): void {
     this.logger.log('Starting ETH monitoring...')
 
-    this.ethMonitorService.onDeposit(({ address, amount, decimals, currency, txHash, evmNetwork }) => {
+    this.ethMonitorService.onDeposit(({ address, amount, decimals, currency, txHash, outputIndex, blockHash, blockNumber, evmNetwork }) => {
       this.depositQueue.push(async () => {
         this.logger.log(`New ETH deposit: ${address} ${formatBaseUnits(amount, decimals)} ${currency} txHash: ${txHash} evmNetwork: ${evmNetwork}`)
 
-        void this.depositService.notifyNewDeposit({ currency, address, amount, decimals, txHash, chain: evmNetwork })
-        await this.splitWithdrawUseCase.execute({ currency, address, amount, decimals, chain: evmNetwork })
+        await this.processDepositUseCase.execute({ chain: evmNetwork, currency, address, amount, decimals, txHash, outputIndex, blockHash, blockNumber })
       })
       void this.processQueue()
     })

@@ -7,7 +7,18 @@ import { ConfigService } from '@nestjs/config'
 import { ContractEventPayload, ethers } from 'ethers'
 import { TConfiguration } from '../../config/configuration'
 
-type DepositCallback = (data: { address: string; amount: bigint; decimals: number; currency: Currency; txHash: string; evmNetwork: EvmNetwork }) => void
+type DepositCallback = (data: {
+  address: string
+  amount: bigint
+  decimals: number
+  currency: Currency
+  txHash: string
+  /** Log index for token transfers; 0 for native transfers, which credit one address per tx. */
+  outputIndex: number
+  blockHash?: string | null
+  blockNumber?: bigint | null
+  evmNetwork: EvmNetwork
+}) => void
 
 @Injectable()
 export class EthMonitorService {
@@ -117,7 +128,17 @@ export class EthMonitorService {
       if (amountWei < parseBaseUnits(this.minEthDeposit, ETH_DECIMALS)) continue
 
       this.logger.log(`Deposit detected: ${formatBaseUnits(amountWei, ETH_DECIMALS)} ETH from ${tx.from} to ${to} txHash: ${tx.hash} network: ${evmNetwork}`)
-      this.depositCallback({ address: to, amount: amountWei, decimals: ETH_DECIMALS, currency: Currency.ETH, txHash: tx.hash, evmNetwork })
+      this.depositCallback({
+        address: to,
+        amount: amountWei,
+        decimals: ETH_DECIMALS,
+        currency: Currency.ETH,
+        txHash: tx.hash,
+        outputIndex: 0,
+        blockHash: block.hash,
+        blockNumber: BigInt(blockNumber),
+        evmNetwork,
+      })
     }
   }
 
@@ -138,7 +159,18 @@ export class EthMonitorService {
         const txHash = event.log.transactionHash
 
         this.logger.log(`Deposit detected: ${formatBaseUnits(amountBase, decimals)} USDT from ${from} to ${toLower} txHash: ${txHash} network: ${evmNetwork}`)
-        this.depositCallback({ address: toLower, amount: amountBase, decimals, currency: Currency.USDT, txHash, evmNetwork })
+        this.depositCallback({
+          address: toLower,
+          amount: amountBase,
+          decimals,
+          currency: Currency.USDT,
+          txHash,
+          // Distinguishes multiple USDT transfers to the same address within one transaction.
+          outputIndex: event.log.index,
+          blockHash: event.log.blockHash,
+          blockNumber: BigInt(event.log.blockNumber),
+          evmNetwork,
+        })
       } catch (err) {
         this.logger.error(`Error processing USDT transfer network: ${evmNetwork} ${err instanceof Error ? err.message : String(err)}`)
       }

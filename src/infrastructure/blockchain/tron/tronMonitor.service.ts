@@ -7,7 +7,17 @@ import { TronWeb } from 'tronweb'
 import { Block } from 'tronweb/lib/esm/types/APIResponse'
 import type { TConfiguration } from '../../config/configuration'
 
-type DepositCallback = (data: { address: string; amount: bigint; decimals: number; currency: Currency; txHash: string }) => Promise<void>
+type DepositCallback = (data: {
+  address: string
+  amount: bigint
+  decimals: number
+  currency: Currency
+  txHash: string
+  /** Always 0: only contract[0] of a transaction is decoded, so one credit per tx. */
+  outputIndex: number
+  blockHash?: string | null
+  blockNumber?: bigint | null
+}) => Promise<void>
 
 @Injectable()
 export class TronMonitorService {
@@ -123,7 +133,16 @@ export class TronMonitorService {
 
               this.logger.log(`Deposit detected: ${formatBaseUnits(trxAmountSun, TRX_DECIMALS)} TRX to ${toAddress} txHash: ${tx.txID}`)
 
-              void this.depositCallback({ address: toAddress, amount: trxAmountSun, decimals: TRX_DECIMALS, currency: Currency.TRX, txHash: tx.txID })
+              void this.depositCallback({
+                address: toAddress,
+                amount: trxAmountSun,
+                decimals: TRX_DECIMALS,
+                currency: Currency.TRX,
+                txHash: tx.txID,
+                outputIndex: 0,
+                blockHash: block.blockID,
+                blockNumber: BigInt(blockNum),
+              })
 
               continue
             }
@@ -172,7 +191,16 @@ export class TronMonitorService {
 
               this.logger.log(`Deposit detected: ${formatBaseUnits(usdtAmountBase, TRON_USDT_DECIMALS)} USDT to ${toAddress} txHash: ${tx.txID}`)
 
-              void this.depositCallback({ address: toAddress, amount: usdtAmountBase, decimals: TRON_USDT_DECIMALS, currency: Currency.USDT, txHash: tx.txID })
+              void this.depositCallback({
+                address: toAddress,
+                amount: usdtAmountBase,
+                decimals: TRON_USDT_DECIMALS,
+                currency: Currency.USDT,
+                txHash: tx.txID,
+                outputIndex: 0,
+                blockHash: block.blockID,
+                blockNumber: BigInt(blockNum),
+              })
             }
           } catch (error) {
             this.logger.error(`Error processing transaction ${tx.txID}: ${error instanceof Error ? error.message : String(error)}`)

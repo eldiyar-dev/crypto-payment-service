@@ -2,11 +2,10 @@ import { Chain } from '@/common/enums'
 import { formatBaseUnits } from '@/common/utils'
 import { Wallet } from '@/domain/entities/wallet.entity'
 import { WalletRepository } from '@/domain/repositories/walletRepository'
-import { DepositService } from '@/infrastructure/clientApi/deposit.service'
 import { RedisService } from '@/infrastructure/redis/redis.service'
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import { TronMonitorService } from '../../../infrastructure/blockchain/tron/tronMonitor.service'
-import { SplitWithdrawUseCase } from '../autoWithdraw/splitWithdraw.usecase'
+import { ProcessDepositUseCase } from './processDeposit.usecase'
 
 @Injectable()
 export class TronMonitorUseCase implements OnModuleInit {
@@ -14,9 +13,8 @@ export class TronMonitorUseCase implements OnModuleInit {
 
   constructor(
     private readonly tronMonitorService: TronMonitorService,
-    private readonly depositService: DepositService,
     private readonly walletRepository: WalletRepository,
-    private readonly splitWithdrawUseCase: SplitWithdrawUseCase,
+    private readonly processDepositUseCase: ProcessDepositUseCase,
     private readonly redisService: RedisService,
   ) {}
 
@@ -36,11 +34,10 @@ export class TronMonitorUseCase implements OnModuleInit {
   execute(): void {
     this.logger.log('Starting TRON monitoring...')
 
-    this.tronMonitorService.onDeposit(async ({ address, amount, decimals, currency, txHash }) => {
+    this.tronMonitorService.onDeposit(async ({ address, amount, decimals, currency, txHash, outputIndex, blockHash, blockNumber }) => {
       this.logger.log(`New TRON deposit: ${address} ${formatBaseUnits(amount, decimals)} ${currency}`)
-      void this.depositService.notifyNewDeposit({ currency, address, amount, decimals, txHash, chain: Chain.TRON })
 
-      await this.splitWithdrawUseCase.execute({ currency, address, amount, decimals, chain: Chain.TRON })
+      await this.processDepositUseCase.execute({ chain: Chain.TRON, currency, address, amount, decimals, txHash, outputIndex, blockHash, blockNumber })
     })
   }
 }

@@ -22,6 +22,9 @@ type TWithdrawParams = {
   chain: Chain
 }
 
+/** Outcome of a sweep, recorded against the deposit ledger by the caller. */
+export type TWithdrawResult = { success: true } | { success: false; reason: string }
+
 type TWithdrawAccountParams = {
   fromAddress: string
   fromAddressPrivateKey: string
@@ -68,20 +71,24 @@ export class SplitWithdrawUseCase {
   ) {}
 
   /**
-   * Call this after deposit confirmation
+   * Call this after deposit confirmation.
+   *
    * @param currency - Currency (e.g., Currency.TRX USDT BTC ETH)
    * @param address - Source address (wallet to be emptied)
-   * @param amount - Amount to withdraw (full balance)
+   * @param amount - Amount to withdraw, in base units
+   * @param decimals - Decimal places for `amount`
    * @param chain - Chain (e.g., Chain.TRON, Chain.BTC, Chain.ETH)
+   * @returns A result describing whether every attempted leg completed. The caller records
+   * this on the deposit ledger, so "failed" must never be reported as "swept".
    */
-  async execute({ currency, address, amount, decimals, chain }: TWithdrawParams) {
+  async execute({ currency, address, amount, decimals, chain }: TWithdrawParams): Promise<TWithdrawResult> {
     try {
       // Get withdrawal wallets and pie
       const withdrawData = await this.withdrawService.getWithdrawWallets(chain, address)
       if (!withdrawData) {
         this.logger.error(`Failed to get withdrawal wallets for ${address}`)
         void this.reportService.sendReport({ currency, address, ...this.reportAmount(amount, decimals), message: `Failed to get withdrawal wallets for ${address}` })
-        return
+        return { success: false, reason: 'Failed to get withdrawal wallets' }
       }
 
       const { mainAddress, mainPrivateKey, additionalAddress, pie } = withdrawData
@@ -89,7 +96,7 @@ export class SplitWithdrawUseCase {
       // Rent energy
       if (chain === Chain.TRON && currency === Currency.USDT) {
         const orderId = await this.rentEnergy(address, mainPrivateKey)
-        if (!orderId) return
+        if (!orderId) return { success: false, reason: 'Failed to rent TRON energy' }
         this.logger.log(`Successfully rented energy for ${address} orderId: ${orderId}`)
 
         // Wait for 2 seconds to ensure the energy is rented
@@ -109,14 +116,14 @@ export class SplitWithdrawUseCase {
       if (mainAmount + additionalAmount !== amount) {
         this.logger.error(`Split does not conserve value for ${address}: ${mainAmount} + ${additionalAmount} !== ${amount}`)
         void this.reportService.sendReport({ currency, address, ...this.reportAmount(amount, decimals), message: `Split does not conserve value for ${address}` })
-        return
+        return { success: false, reason: 'Split does not conserve value' }
       }
 
       // Get source wallet's encrypted private key
       const wallet = await this.walletRepository.getWalletByAddress(address)
       if (!wallet) {
         this.logger.error(`Source wallet not found for ${address}`)
-        return
+        return { success: false, reason: 'Source wallet not found' }
       }
 
       // Decrypt in memory at send time — key material is never held decrypted at rest.
@@ -124,12 +131,13 @@ export class SplitWithdrawUseCase {
       if (!fromAddressPrivateKey) {
         this.logger.error(`Unable to resolve private key for ${address}; aborting withdrawal`)
         void this.reportService.sendReport({ currency, address, ...this.reportAmount(amount, decimals), message: `Unable to resolve private key for ${address}` })
-        return
+        return { success: false, reason: 'Unable to resolve private key' }
       }
 
       // Withdraw to additionalAddress
+      let additionalSent = true
       if (additionalAmount > 0n) {
-        await this.withdrawAccount({
+        additionalSent = await this.withdrawAccount({
           fromAddress: address,
           fromAddressPrivateKey,
           toAddress: additionalAddress,
@@ -142,8 +150,9 @@ export class SplitWithdrawUseCase {
       }
 
       // Withdraw to mainAddress
+      let mainSent = true
       if (mainAmount > 0n) {
-        await this.withdrawAccount({
+        mainSent = await this.withdrawAccount({
           fromAddress: address,
           fromAddressPrivateKey,
           toAddress: mainAddress,
@@ -154,9 +163,12 @@ export class SplitWithdrawUseCase {
           chain,
         })
       }
+      if (additionalSent && mainSent) return { success: true }
+
+      return { success: false, reason: `Withdrawal incomplete (additional: ${additionalSent ? 'sent' : 'failed'}, main: ${mainSent ? 'sent' : 'failed'})` }
     } catch (error) {
       this.logger.error(`Withdraw failed for ${address}: ${error.message}`, error)
-      return
+      return { success: false, reason: `Withdraw threw: ${(error as Error).message}` }
     }
   }
 
