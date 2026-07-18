@@ -1,8 +1,10 @@
 import { AESCipherService } from '@/common/services/aes.service'
-import configuration from '@/infrastructure/config/configuration'
+import configuration, { TConfiguration } from '@/infrastructure/config/configuration'
 import { HttpModule } from '@nestjs/axios'
 import { Module } from '@nestjs/common'
-import { ConfigModule } from '@nestjs/config'
+import { ConfigModule, ConfigService } from '@nestjs/config'
+import { APP_GUARD } from '@nestjs/core'
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler'
 import { TronEnergyService } from '../blockchain/tron/tronEnergy.service'
 import { DatabaseModule } from '../database/postgresql.module'
 import { RedisModule } from '../redis/redise.module'
@@ -21,6 +23,12 @@ import { WalletModule } from './wallet.module'
       cache: true,
     }),
     HttpModule.register({ global: true }),
+    // The `throttler` config existed but ThrottlerModule was never imported and no APP_GUARD
+    // was registered, so nothing was ever rate limited.
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService<TConfiguration>) => configService.get('throttler', { infer: true })!,
+    }),
     DatabaseModule,
     RedisModule,
     LedgerModule,
@@ -33,7 +41,7 @@ import { WalletModule } from './wallet.module'
     SplitWithdrawModule,
   ],
   controllers: [],
-  providers: [AESCipherService, TronEnergyService],
+  providers: [AESCipherService, TronEnergyService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
   exports: [AESCipherService],
 })
 export class AppModule {}

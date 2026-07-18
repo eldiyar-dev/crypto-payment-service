@@ -1,11 +1,11 @@
 import { StoreWalletUseCase } from '@/application/usecases/manageWallets/store-wallet.usecase'
 import { HttpMessageDto } from '@/common/dto/http.dto'
-import { Chain } from '@/common/enums'
+import { ApiKeyGuard, IpWhitelistGuard } from '@/common/guards'
 import { IRequest } from '@/common/interfaces/reqest.interfaces'
-import { detectBlockchainNetwork } from '@/common/utils'
+import { isValidChainAddress, privateKeyMatchesAddress } from '@/common/utils'
 import { Wallet } from '@/domain/entities/wallet.entity'
 import { CreateWalletDto, CreateWalletsResponseDto } from '@/presentation/dto/create-wallet.dto'
-import { Body, Controller, HttpCode, HttpException, HttpStatus, Logger, Post, Request } from '@nestjs/common'
+import { Body, Controller, HttpCode, HttpException, HttpStatus, Logger, Post, Request, UseGuards } from '@nestjs/common'
 import { ApiBadRequestResponse, ApiInternalServerErrorResponse, ApiOkResponse, ApiTags, ApiUnauthorizedResponse } from '@nestjs/swagger'
 
 @ApiTags('Wallets')
@@ -18,7 +18,7 @@ export class WalletController {
 
   constructor(private readonly storeWalletUseCase: StoreWalletUseCase) {}
 
-  // @UseGuards(ApiKeyGuard, IpWhitelistGuard)
+  @UseGuards(ApiKeyGuard, IpWhitelistGuard)
   @ApiOkResponse({ type: CreateWalletsResponseDto })
   @Post('wallets')
   @HttpCode(HttpStatus.CREATED)
@@ -33,14 +33,20 @@ export class WalletController {
       const invalidWallets: string[] = []
 
       for (const wallet of wallets) {
-        const chain = detectBlockchainNetwork(wallet.address)
-        if (!chain) {
+        // Validate against the chain the caller declared, with a real checksum check.
+        // The previous logic read `if (chain !== Chain.ETH && chain !== wallet.chain)`, so
+        // whenever the *detected* chain was ETH any declared chain was accepted — an
+        // EVM-format address could be registered as BTC or TRON.
+        if (!isValidChainAddress(wallet.address, wallet.chain)) {
           invalidWallets.push(wallet.address)
           continue
         }
 
-        // If the chain is not ETH or the chain is not the same as the wallet chain, then it is invalid
-        if (chain !== Chain.ETH && chain !== wallet.chain) {
+        // The address must be the one this private key actually controls. Without this the
+        // service will monitor an address it cannot sweep: deposits are detected, every
+        // withdrawal fails, and the funds are stranded.
+        if (!privateKeyMatchesAddress(wallet.privateKey, wallet.address, wallet.chain)) {
+          this.logger.error(`Rejecting wallet ${wallet.address}: private key does not control this address on ${wallet.chain}`)
           invalidWallets.push(wallet.address)
           continue
         }
