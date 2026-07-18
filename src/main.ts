@@ -60,7 +60,17 @@ async function bootstrap() {
   const config = new DocumentBuilder().setTitle('LLC Crypto API').setDescription('The API description').setVersion('1.0').addBearerAuth().build()
   const document = SwaggerModule.createDocument(app, config, { extraModels: [HttpMessageDto] })
   SwaggerModule.setup('swagger', app, document)
-  fs.writeFileSync('./swagger.json', JSON.stringify(document))
+
+  // Writing the spec to the working directory on every boot fails outright on a read-only
+  // container filesystem, taking the service down before it can listen. It is a build-time
+  // artefact, so it is opt-in and never fatal.
+  if (process.env.WRITE_SWAGGER_JSON === 'true') {
+    try {
+      fs.writeFileSync('./swagger.json', JSON.stringify(document))
+    } catch (error) {
+      logger.warn(`Could not write swagger.json: ${(error as Error).message}`)
+    }
+  }
 
   await app.listen(port)
 
