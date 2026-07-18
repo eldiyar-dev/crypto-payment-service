@@ -32,6 +32,11 @@ export default () =>
     },
     throttler: [{ ttl: 60000, limit: 10 }],
     client_api_url: process.env.CLIENT_API_URL,
+    client_api_key: process.env.CLIENT_API_KEY,
+    client_api_timeout_ms: parseInt(process.env.CLIENT_API_TIMEOUT_MS ?? '', 10) || 10_000,
+    // Escape hatch for local development only. In any other environment a plain-HTTP client API
+    // exposes destination addresses and hot-wallet key material in transit.
+    allow_insecure_client_api: process.env.ALLOW_INSECURE_CLIENT_API === 'true',
     private_key_secret: process.env.PRIVATE_KEY_SECRET,
     // Opt-in escape hatch for wallet rows written before encryption existed. Fails closed by
     // default: a plaintext key is refused rather than silently used. Set to 'true' only while
@@ -120,6 +125,9 @@ export type TConfiguration = {
   redis: { port: RedisOptions['port']; host: RedisOptions['host']; password: RedisOptions['password'] }
   throttler: ThrottlerModuleOptions
   client_api_url: string
+  client_api_key: string
+  client_api_timeout_ms: number
+  allow_insecure_client_api: boolean
   private_key_secret: string
   allow_legacy_plaintext_keys: boolean
   ip_whitelist: string[]
