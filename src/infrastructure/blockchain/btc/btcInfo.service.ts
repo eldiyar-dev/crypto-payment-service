@@ -104,7 +104,7 @@ export class BtcInfoService {
       const { data } = await axios.get<UTXO[]>(utxoUrl)
       return data ?? []
     } catch (error) {
-      this.logger.error(`Error getting UTXOs for ${address}: ${(error as Error).message}`, error)
+      this.logger.error(`Error getting UTXOs for ${address}: ${(error as Error).message}`)
       return []
     }
   }
@@ -115,7 +115,7 @@ export class BtcInfoService {
       const { data } = await axios.get<{ hex: string }>(url)
       return data?.hex ?? null
     } catch (error) {
-      this.logger.error(`Error getting raw tx for ${txid}: ${(error as Error).message}`, error)
+      this.logger.error(`Error getting raw tx for ${txid}: ${(error as Error).message}`)
       return null
     }
   }
@@ -126,7 +126,7 @@ export class BtcInfoService {
       const { data } = await axios.get<AnkrTransaction>(url)
       return data ?? null
     } catch (error) {
-      this.logger.error(`Error getting tx by hash ${txHash}: ${(error as Error).message}`, error)
+      this.logger.error(`Error getting tx by hash ${txHash}: ${(error as Error).message}`)
       return null
     }
   }

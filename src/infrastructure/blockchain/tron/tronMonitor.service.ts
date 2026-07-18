@@ -213,7 +213,7 @@ export class TronMonitorService {
         await this.chainCheckpointRepository.setLastScannedBlock(Chain.TRON, blockNum)
       }
     } catch (err: unknown) {
-      this.logger.error('Error polling Tron deposits', err)
+      this.logger.error(`Error polling Tron deposits: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       this.isPolling = false
     }
