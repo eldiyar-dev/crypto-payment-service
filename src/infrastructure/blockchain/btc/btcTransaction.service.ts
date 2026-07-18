@@ -1,4 +1,4 @@
-import { BTC_DECIMALS, estimateP2wpkhVsize, formatBaseUnits } from '@/common/utils'
+import { BTC_DECIMALS, formatBaseUnits, selectUtxos } from '@/common/utils'
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import axios from 'axios'
@@ -83,12 +83,32 @@ export class BtcTransactionService {
         return null
       }
 
-      // 2. Collect transaction
-      const psbt = new bitcoin.Psbt({ network: this.network })
-      let totalInput = 0n
+      // Already in satoshi — exact.
+      const payable = outputs.filter((output) => output.amount > 0n)
+      const totalOutput = payable.reduce((sum, output) => sum + output.amount, 0n)
 
-      // Add inputs
-      for (const utxo of utxos) {
+      // 2. Choose inputs. Spending every UTXO produced an oversized transaction that the old
+      // flat 1000-satoshi fee then underpaid, and cost one raw-tx fetch per UTXO.
+      const feeRate = await this.resolveFeeRate()
+      const selection = selectUtxos(utxos, totalOutput, feeRate, payable.length)
+
+      // Fail rather than substitute. "Sending max possible" returned a transaction hash that
+      // the caller reported as a completed withdrawal, for an amount nobody requested.
+      if (!selection) {
+        const available = utxos.reduce((sum, utxo) => sum + BigInt(utxo.value), 0n)
+        this.logger.error(
+          `Insufficient funds for fromAddress: ${fromAddress}: have ${formatBaseUnits(available, BTC_DECIMALS)} BTC, need ${formatBaseUnits(totalOutput, BTC_DECIMALS)} BTC plus fee`,
+        )
+        return null
+      }
+
+      const { selected, fee, change } = selection
+      this.logger.log(`Selected ${selected.length}/${utxos.length} UTXO(s), fee ${fee} sat at ${feeRate.toFixed(2)} sat/vB`)
+
+      const psbt = new bitcoin.Psbt({ network: this.network })
+
+      // Raw transactions are fetched only for the inputs actually used.
+      for (const utxo of selected) {
         const rawTxHex = await this.btcInfoService.getRawTx(utxo.txid)
         if (!rawTxHex) {
           this.logger.error(`Failed to get raw tx for ${utxo.txid}`)
@@ -99,43 +119,16 @@ export class BtcTransactionService {
           index: utxo.vout,
           nonWitnessUtxo: Buffer.from(rawTxHex, 'hex'),
         })
-        totalInput += BigInt(utxo.value)
       }
 
-      // Already in satoshi — exact.
-      const totalOutput = outputs.reduce((sum, output) => sum + output.amount, 0n)
-
-      // Sized from the actual transaction and the current network rate. A flat 1000 sat
-      // regardless of size meant that any multi-input sweep fell below the relay minimum, so
-      // the transaction was rejected or stuck in the mempool indefinitely — and there is no
-      // RBF/CPFP path to rescue it.
-      const outputCount = outputs.filter((output) => output.amount > 0n).length + 1 // +1 for change
-      const fee = await this.estimateFee(utxos.length, outputCount)
-
-      if (totalInput < fee) {
-        this.logger.error(`Insufficient funds for fee for fromAddress: ${fromAddress}`)
-        return null
-      }
-
-      // Fail rather than substitute. "Sending max possible" returned a transaction hash that
-      // the caller reported as a completed withdrawal, for an amount nobody requested.
-      if (totalInput < totalOutput + fee) {
-        this.logger.error(
-          `Insufficient funds for fromAddress: ${fromAddress}: have ${formatBaseUnits(totalInput, BTC_DECIMALS)} BTC, need ${formatBaseUnits(totalOutput + fee, BTC_DECIMALS)} BTC (amount + fee)`,
-        )
-        return null
-      }
-
-      for (const output of outputs) {
-        if (output.amount <= 0n) continue
+      for (const output of payable) {
         psbt.addOutput({ address: output.toAddress, value: Number(output.amount) })
       }
 
-      const change = totalInput - totalOutput - fee
       if (change > 0n) psbt.addOutput({ address: fromAddress, value: Number(change) })
 
       // 3. Sign
-      for (let i = 0; i < utxos.length; i++) {
+      for (let i = 0; i < selected.length; i++) {
         const signer = {
           publicKey: Buffer.from(keyPair.publicKey),
           sign: (hash: Buffer) => Buffer.from(keyPair.sign(hash)),
@@ -162,24 +155,14 @@ export class BtcTransactionService {
   }
 
   /**
-   * Estimates the fee for a p2wpkh transaction of the given shape.
-   *
-   * vsize is approximated from the standard segwit component sizes: ~11 vbytes of overhead,
-   * ~68 vbytes per p2wpkh input, ~31 vbytes per output. The rate is clamped so that a bad or
-   * missing estimate cannot produce either an unrelayable transaction or a catastrophic
-   * overpay.
+   * Current fee rate, clamped so that a bad or missing estimate can produce neither an
+   * unrelayable transaction nor a fee that drains the wallet.
    */
-  private async estimateFee(inputCount: number, outputCount: number): Promise<bigint> {
-    const vsize = estimateP2wpkhVsize(inputCount, outputCount)
-
+  private async resolveFeeRate(): Promise<number> {
     const reported = await this.btcInfoService.getFeeRateSatPerVByte()
     if (reported === null) this.logger.warn(`Fee estimate unavailable; falling back to ${this.FALLBACK_FEE_RATE} sat/vB`)
 
-    const rate = Math.min(Math.max(reported ?? this.FALLBACK_FEE_RATE, this.MIN_FEE_RATE), this.MAX_FEE_RATE)
-    const fee = BigInt(Math.ceil(vsize * rate))
-
-    this.logger.log(`Estimated fee: ${fee} sat (${vsize} vbytes at ${rate.toFixed(2)} sat/vB, ${inputCount} in / ${outputCount} out)`)
-    return fee
+    return Math.min(Math.max(reported ?? this.FALLBACK_FEE_RATE, this.MIN_FEE_RATE), this.MAX_FEE_RATE)
   }
 
   /**
