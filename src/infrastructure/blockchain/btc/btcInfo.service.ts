@@ -13,43 +13,33 @@ export class BtcInfoService {
     this.baseUrl = this.configService.get('btc_api_url')!
   }
 
-  async getBTCBalance(address: string): Promise<number | null> {
+  /** Confirmed balance in satoshi, exact. Null if unavailable. */
+  async getBTCBalanceSatoshi(address: string): Promise<bigint | null> {
     try {
       const url = `${this.baseUrl}/api/v2/address/${address}`
-      const { data } = await axios.get<AnkrAddress>(url)
-      return data.balance ? parseInt(data.balance, 10) / 1e8 : 0
+      const { data } = await axios.get<AnkrAddress>(url, { timeout: 10_000 })
+      return data?.balance ? BigInt(data.balance) : 0n
     } catch (error) {
       this.logger.error(`Failed to get BTC balance for address ${address}: ${(error as Error).message}`)
       return null
     }
   }
 
-  async getLatestBlockHeight(): Promise<number> {
+  /**
+   * Chain tip height, or null if unavailable.
+   *
+   * This used to return 0 on failure, which the caller could not distinguish from a real
+   * height — and 0 is falsy, so it silently re-triggered the "initialise the checkpoint"
+   * branch. Failure is never encoded as a valid-looking value.
+   */
+  async getLatestBlockHeight(): Promise<number | null> {
     try {
       const url = `${this.baseUrl}/api/v2/`
-      const { data } = await axios.get<AnkrStatus>(url)
+      const { data } = await axios.get<AnkrStatus>(url, { timeout: 10_000 })
       return data.blockbook.bestHeight
     } catch (error) {
       this.logger.error(`Failed to get latest block height: ${(error as Error).message}`)
-      return 0
-    }
-  }
-
-  async getBlockByHeight(height: number): Promise<AnkrTransaction[]> {
-    try {
-      const url = `${this.baseUrl}/api/v2/block/${height}`
-      const { data } = await axios.get<AnkrBlock>(url)
-
-      if (!data?.txs) return []
-
-      return data.txs
-    } catch (error) {
-      if (error instanceof AxiosError && error.response?.status === 404) {
-        this.logger.warn(`Block not found at height ${height}`)
-      } else {
-        this.logger.error(`Failed to get block by height ${height}: ${(error as Error).message}`)
-      }
-      return []
+      return null
     }
   }
 
@@ -85,13 +75,36 @@ export class BtcInfoService {
     return []
   }
 
+  /**
+   * Current fee rate in satoshi per vbyte, for confirmation within `blocks`.
+   *
+   * Blockbook reports fees as BTC per kilobyte, so the value is converted. Returns null if the
+   * estimate is unavailable or nonsensical, letting the caller fall back to a safe default
+   * rather than broadcasting at whatever number came back.
+   */
+  async getFeeRateSatPerVByte(blocks = 3): Promise<number | null> {
+    try {
+      const url = `${this.baseUrl}/api/v2/estimatefee/${blocks}`
+      const { data } = await axios.get<{ result: string }>(url, { timeout: 10_000 })
+
+      const btcPerKb = parseFloat(data?.result ?? '')
+      if (!Number.isFinite(btcPerKb) || btcPerKb <= 0) return null
+
+      // BTC/kB -> sat/vB
+      return (btcPerKb * 1e8) / 1000
+    } catch (error) {
+      this.logger.error(`Failed to get fee rate: ${(error as Error).message}`)
+      return null
+    }
+  }
+
   async getUTXOs(address: string): Promise<UTXO[]> {
     try {
       const utxoUrl = `${this.baseUrl}/api/v2/utxo/${address}`
       const { data } = await axios.get<UTXO[]>(utxoUrl)
       return data ?? []
     } catch (error) {
-      this.logger.error(`Error getting UTXOs for ${address}: ${(error as Error).message}`, error)
+      this.logger.error(`Error getting UTXOs for ${address}: ${(error as Error).message}`)
       return []
     }
   }
@@ -102,7 +115,7 @@ export class BtcInfoService {
       const { data } = await axios.get<{ hex: string }>(url)
       return data?.hex ?? null
     } catch (error) {
-      this.logger.error(`Error getting raw tx for ${txid}: ${(error as Error).message}`, error)
+      this.logger.error(`Error getting raw tx for ${txid}: ${(error as Error).message}`)
       return null
     }
   }
@@ -113,7 +126,7 @@ export class BtcInfoService {
       const { data } = await axios.get<AnkrTransaction>(url)
       return data ?? null
     } catch (error) {
-      this.logger.error(`Error getting tx by hash ${txHash}: ${(error as Error).message}`, error)
+      this.logger.error(`Error getting tx by hash ${txHash}: ${(error as Error).message}`)
       return null
     }
   }

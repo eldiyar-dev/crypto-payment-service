@@ -14,34 +14,30 @@ export class TronInfoService {
   }
 
   /**
-   * Get the TRX balance for a given address
-   * @param address - The Tron address to check
-   * @returns The balance in TRX as a number
+   * TRX balance in SUN.
+   *
+   * Returns null rather than throwing so one unreachable node cannot abort a reconciliation
+   * pass, and exact base units so the value is comparable with ledger amounts.
    */
-  async getTRXBalance(address: string): Promise<number> {
+  async getTRXBalanceSun(address: string): Promise<bigint | null> {
     try {
       const balance = await this.tronWeb.trx.getBalance(address)
-      return balance / 1e6 // Convert SUN to TRX
+      return BigInt(Math.trunc(Number(balance)))
     } catch (error) {
       this.logger.error(`Failed to get TRX balance for address ${address}: ${error.message}`)
-      throw error
+      return null
     }
   }
 
-  /**
-   * Get the TRC20 token balance for a given address
-   * @param address - The Tron address to check
-   * @param contractAddress - The TRC20 token contract address
-   * @returns The token balance as a number
-   */
-  async getTRC20Balance(address: string, contractAddress: string): Promise<number> {
+  /** TRC20 balance in the token's base units. */
+  async getTRC20BalanceBaseUnits(address: string, contractAddress: string): Promise<bigint | null> {
     try {
       const contract = await this.tronWeb.contract().at(contractAddress)
-      const balance = await contract.balanceOf(address).call()
-      return Number(balance) / 1e6 // For USDT typically 6 decimals
+      const balance = (await contract.balanceOf(address).call()) as { toString(): string }
+      return BigInt(balance.toString())
     } catch (error) {
       this.logger.error(`Failed to get TRC20 balance for address ${address}: ${error.message}`)
-      throw error
+      return null
     }
   }
 
@@ -61,19 +57,46 @@ export class TronInfoService {
   }
 
   /**
-   * Wait for a Tron transaction to be confirmed
+   * Wait for a Tron transaction to be mined AND to have succeeded.
+   *
+   * A mined transaction is not a successful one: a TRC20 transfer that runs out of energy is
+   * included in a block with `receipt.result = 'OUT_OF_ENERGY'`. Treating any `blockNumber` as
+   * confirmation reported reverted transfers as completed withdrawals. Native TRX transfers
+   * carry no `receipt.result`, so its absence is treated as success.
+   *
+   * Transient RPC errors are tolerated: previously an exception inside the loop aborted the
+   * whole wait, which the caller could not distinguish from a genuine failure.
+   *
+   * The default bound is deliberately short. It used to be 1200 one-second polls — a
+   * 20-minute blocking wait sitting directly in the deposit path, holding the serial queue and
+   * every deposit behind it. TRON produces a block roughly every 3 seconds, so a transfer that
+   * is going to confirm does so well inside a minute; waiting longer does not make it more
+   * likely to land, it only delays discovering that it did not.
+   *
    * @param txHash - The hash of the transaction to wait for
-   * @param maxAttempts - The maximum number of attempts to wait for the transaction to be confirmed
-   * @returns The block number of the confirmed transaction
+   * @param maxAttempts - Maximum one-second polls before giving up
+   * @returns The block number if the transaction succeeded, null if it reverted or timed out
    */
-  async waitForTronTxConfirmation(txHash: string, maxAttempts = 1_200): Promise<number | null> {
-    let attempts = 0
-    while (attempts < maxAttempts) {
-      const txInfo = await this.tronWeb.trx.getTransactionInfo(txHash)
-      if (txInfo?.blockNumber) return txInfo.blockNumber
+  async waitForTronTxConfirmation(txHash: string, maxAttempts = 60): Promise<number | null> {
+    for (let attempts = 0; attempts < maxAttempts; attempts++) {
+      try {
+        const txInfo = await this.tronWeb.trx.getTransactionInfo(txHash)
+
+        if (txInfo?.blockNumber) {
+          const result = txInfo.receipt?.result
+          if (result && result !== 'SUCCESS') {
+            this.logger.error(`Transaction ${txHash} was mined but failed on-chain: ${result}`)
+            return null
+          }
+          return txInfo.blockNumber
+        }
+      } catch (error) {
+        this.logger.debug(`Polling ${txHash} failed, retrying: ${(error as Error).message}`)
+      }
+
       await sleep(1_000)
-      attempts++
     }
+
     this.logger.error(`Transaction ${txHash} not confirmed in time`)
     return null
   }

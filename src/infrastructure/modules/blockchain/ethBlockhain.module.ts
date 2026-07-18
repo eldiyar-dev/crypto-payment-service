@@ -1,14 +1,16 @@
 import { EthMonitorUseCase } from '@/application/usecases/monitor-blockchain/ethMonitor.usecase'
-import { EthInfoService, EthMonitorService, EthTransactionService } from '@/infrastructure/blockchain/eth'
+import { EthInfoService, EthMonitorService, EthTransactionService, EvmProviderFactory } from '@/infrastructure/blockchain/eth'
+import { ProcessDepositUseCase } from '@/application/usecases/monitor-blockchain/processDeposit.usecase'
 import { Module } from '@nestjs/common'
 import { DepositService } from '../../clientApi/deposit.service'
+import { ReportService } from '../../clientApi/report.service'
 import { SplitWithdrawModule } from '../splitWithdraw.module'
 import { WalletModule } from '../wallet.module'
 
 @Module({
   imports: [WalletModule, SplitWithdrawModule],
   controllers: [],
-  providers: [EthMonitorUseCase, EthMonitorService, EthTransactionService, EthInfoService, DepositService],
+  providers: [EthMonitorUseCase, EthMonitorService, EthTransactionService, EthInfoService, EvmProviderFactory, DepositService, ProcessDepositUseCase, ReportService],
   exports: [EthMonitorUseCase, EthInfoService, EthTransactionService],
 })
 export class EthBlockhainModule {}

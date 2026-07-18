@@ -1,5 +1,6 @@
 import { Chain, Currency } from '@/common/enums'
-import { withRetry } from '@/common/utils'
+import { decodeTrc20Transfer, formatBaseUnits, parseBaseUnits, TRON_USDT_DECIMALS, TRX_DECIMALS, withRetry } from '@/common/utils'
+import { ChainCheckpointRepository } from '@/domain/repositories/chainCheckpointRepository'
 import { RedisService } from '@/infrastructure/redis/redis.service'
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
@@ -7,7 +8,17 @@ import { TronWeb } from 'tronweb'
 import { Block } from 'tronweb/lib/esm/types/APIResponse'
 import type { TConfiguration } from '../../config/configuration'
 
-type DepositCallback = (data: { address: string; amount: number; currency: Currency; txHash: string }) => Promise<void>
+type DepositCallback = (data: {
+  address: string
+  amount: bigint
+  decimals: number
+  currency: Currency
+  txHash: string
+  /** Always 0: only contract[0] of a transaction is decoded, so one credit per tx. */
+  outputIndex: number
+  blockHash?: string | null
+  blockNumber?: bigint | null
+}) => Promise<void>
 
 @Injectable()
 export class TronMonitorService {
@@ -16,6 +27,7 @@ export class TronMonitorService {
   constructor(
     private readonly configService: ConfigService<TConfiguration>,
     private readonly redisService: RedisService,
+    private readonly chainCheckpointRepository: ChainCheckpointRepository,
   ) {}
 
   private get usdtContractAddress(): string {
@@ -27,15 +39,21 @@ export class TronMonitorService {
   private tronWeb: TronWeb
   private lastCheckedBlock = 0
   private readonly pollInterval = 3_000 // 3 seconds
-  private readonly confirmationThreshold = 1 // 1 confirmations
-  private readonly minTrxDeposit = 1 // 1 TRX
-  private readonly minUsdtDeposit = 0.5 // 0.5 USDT
+
+  /**
+   * Block depth required before a deposit is acted on.
+   *
+   * The old check — `currentBlockNumber - blockNum + 1 >= 1` — was always true for any block
+   * that had been polled, so it gated nothing and TRON was effectively running at depth 0.
+   */
+  private get confirmationThreshold(): number {
+    return this.configService.get(`confirmations.${Chain.TRON}`, { infer: true })!
+  }
+  /** Dust thresholds, held as decimal strings and converted to base units at comparison time. */
+  private readonly minTrxDeposit = '1' // 1 TRX
+  private readonly minUsdtDeposit = '0.5' // 0.5 USDT
   private isPolling = false
   private intervalId: NodeJS.Timeout | null = null
-
-  async getAddresses(): Promise<string[]> {
-    return this.redisService.getAddresses(Chain.TRON)
-  }
 
   onDeposit(callback: DepositCallback) {
     this.depositCallback = callback
@@ -45,9 +63,17 @@ export class TronMonitorService {
     try {
       this.tronWeb = new TronWeb({ fullHost: this.configService.get('tron_host_url')! })
 
-      // Get the latest block number at start
-      const block = await this.tronWeb.trx.getCurrentBlock()
-      this.lastCheckedBlock = block.block_header.raw_data.number
+      // Resume from the durable checkpoint. Resetting to the current block on every boot — as
+      // this did — skipped every deposit that arrived during downtime, permanently.
+      const checkpoint = await this.chainCheckpointRepository.getLastScannedBlock(Chain.TRON)
+      if (checkpoint !== null) {
+        this.lastCheckedBlock = checkpoint
+        this.logger.log(`Resuming TRON scan from block ${checkpoint + 1}`)
+      } else {
+        const block = await this.tronWeb.trx.getCurrentBlock()
+        this.lastCheckedBlock = block.block_header.raw_data.number
+        this.logger.log(`No TRON checkpoint found; starting at current block ${this.lastCheckedBlock}`)
+      }
 
       this.stop()
 
@@ -78,12 +104,15 @@ export class TronMonitorService {
         return
       }
 
-      const addresses = await this.getAddresses()
-
       const currentBlockNumber = currentBlock.block_header.raw_data.number
-      if (this.lastCheckedBlock >= currentBlockNumber) return
 
-      for (let blockNum = this.lastCheckedBlock + 1; blockNum <= currentBlockNumber; blockNum++) {
+      // Only scan blocks already buried under the confirmation depth. Gating here rather than
+      // per-transaction means the depth is actually enforced, and blocks shallower than the
+      // threshold are simply left for a later poll.
+      const highestConfirmedBlock = currentBlockNumber - this.confirmationThreshold + 1
+      if (this.lastCheckedBlock >= highestConfirmedBlock) return
+
+      for (let blockNum = this.lastCheckedBlock + 1; blockNum <= highestConfirmedBlock; blockNum++) {
         const block = await this.getBlockWithRetry(blockNum)
         if (!block?.transactions) {
           this.logger.error(`Block ${blockNum} transactions not found`)
@@ -98,10 +127,6 @@ export class TronMonitorService {
               continue
             }
 
-            // Calculate the number of confirmations
-            const confirmations = currentBlockNumber - blockNum + 1
-            if (confirmations < this.confirmationThreshold) continue
-
             const contract = tx.raw_data.contract[0]
 
             // --- TRX (TransferContract) ---
@@ -111,15 +136,28 @@ export class TronMonitorService {
 
               const toAddress = this.tronWeb.address.fromHex(to_address)
 
-              const trxAmount = Number(amount) / 1e6
+              // `amount` arrives from tronweb already parsed as a JSON number, so anything above
+              // 2^53 SUN has lost precision upstream; converting to bigint here at least stops
+              // the loss from compounding through the split and the send.
+              const trxAmountSun = BigInt(Math.trunc(Number(amount)))
 
-              if (!addresses.includes(toAddress)) continue
+              // O(1) membership test rather than a linear scan of every monitored address.
+              if (!(await this.redisService.isKnownAddress(Chain.TRON, toAddress))) continue
 
-              if (trxAmount < this.minTrxDeposit) continue
+              if (trxAmountSun < parseBaseUnits(this.minTrxDeposit, TRX_DECIMALS)) continue
 
-              this.logger.log(`Deposit detected: ${trxAmount} TRX to ${toAddress} txHash: ${tx.txID}`)
+              this.logger.log(`Deposit detected: ${formatBaseUnits(trxAmountSun, TRX_DECIMALS)} TRX to ${toAddress} txHash: ${tx.txID}`)
 
-              void this.depositCallback({ address: toAddress, amount: trxAmount, currency: Currency.TRX, txHash: tx.txID })
+              void this.depositCallback({
+                address: toAddress,
+                amount: trxAmountSun,
+                decimals: TRX_DECIMALS,
+                currency: Currency.TRX,
+                txHash: tx.txID,
+                outputIndex: 0,
+                blockHash: block.blockID,
+                blockNumber: BigInt(blockNum),
+              })
 
               continue
             }
@@ -134,50 +172,48 @@ export class TronMonitorService {
               // Address of USDT (TRC20) contract on Tron
               if (contractAddress.toLocaleLowerCase() !== this.usdtContractAddress.toLocaleLowerCase()) continue
 
-              // Check if the method transfer(address,uint256) is called
-              const isTransfer = data.startsWith('a9059cbb')
-              const isTransferFrom = data.startsWith('23b872dd')
+              // Decoded by argument word rather than by hand-rolled offsets, which got the
+              // transferFrom layout wrong and silently missed those deposits entirely.
+              const transfer = decodeTrc20Transfer(data)
+              if (!transfer) continue
 
-              if (!isTransfer && !isTransferFrom) continue
-
-              // Decode the recipient address
-              const toAddressHex = isTransfer ? '41' + data.slice(32, 72) : '41' + data.slice(76, 116)
-
-              const toAddress = this.tronWeb.address.fromHex(toAddressHex)
-
-              // Decode the amount
-              const amountHex = data.slice(72, 136)
-
-              if (data.length < 136) {
-                this.logger.warn(`Data too short for TRC20 transfer in tx ${tx.txID}`, data)
-                continue
-              }
-
-              const amountBigInt = BigInt('0x' + amountHex)
-              const usdtAmount = Number(amountBigInt) / 1e6
+              const toAddress = this.tronWeb.address.fromHex(transfer.toAddressHex)
+              const usdtAmountBase = transfer.amount
 
               // Check if the amount is valid
-              if (isNaN(usdtAmount) || usdtAmount <= 0) {
-                this.logger.warn(`Invalid USDT amount for transaction ${tx.txID}: ${usdtAmount}`)
+              if (usdtAmountBase <= 0n) {
+                this.logger.warn(`Invalid USDT amount for transaction ${tx.txID}: ${usdtAmountBase}`)
                 continue
               }
 
-              if (!addresses.includes(toAddress)) continue
+              if (!(await this.redisService.isKnownAddress(Chain.TRON, toAddress))) continue
 
-              if (usdtAmount < this.minUsdtDeposit) continue
+              if (usdtAmountBase < parseBaseUnits(this.minUsdtDeposit, TRON_USDT_DECIMALS)) continue
 
-              this.logger.log(`Deposit detected: ${usdtAmount} USDT to ${toAddress} txHash: ${tx.txID}`)
+              this.logger.log(`Deposit detected: ${formatBaseUnits(usdtAmountBase, TRON_USDT_DECIMALS)} USDT to ${toAddress} txHash: ${tx.txID}`)
 
-              void this.depositCallback({ address: toAddress, amount: usdtAmount, currency: Currency.USDT, txHash: tx.txID })
+              void this.depositCallback({
+                address: toAddress,
+                amount: usdtAmountBase,
+                decimals: TRON_USDT_DECIMALS,
+                currency: Currency.USDT,
+                txHash: tx.txID,
+                outputIndex: 0,
+                blockHash: block.blockID,
+                blockNumber: BigInt(blockNum),
+              })
             }
           } catch (error) {
             this.logger.error(`Error processing transaction ${tx.txID}: ${error instanceof Error ? error.message : String(error)}`)
           }
         }
+        // Persist only after the block is fully processed: a crash mid-block re-scans it,
+        // which the deposit ledger's unique key makes harmless.
         this.lastCheckedBlock = blockNum
+        await this.chainCheckpointRepository.setLastScannedBlock(Chain.TRON, blockNum)
       }
     } catch (err: unknown) {
-      this.logger.error('Error polling Tron deposits', err)
+      this.logger.error(`Error polling Tron deposits: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       this.isPolling = false
     }

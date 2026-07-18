@@ -29,24 +29,25 @@ export class RedisRepository implements OnModuleDestroy {
     return this.redisClient.del(keys)
   }
 
-  setWithExpiry(key: string, value: string, expiry: number) {
-    return this.redisClient.set(key, value, 'EX', expiry)
-  }
-
-  retrievalCount(key: string) {
-    return this.redisClient.incr(`${key}:retrieval_count`)
-  }
-
-  deleteRetrievalCount(key: string) {
-    return this.delete(`${key}:retrieval_count`)
-  }
-
   exists(...keys: string[]) {
     return this.redisClient.exists(keys)
   }
 
   expire(key: string, seconds: number) {
     return this.redisClient.expire(key, seconds)
+  }
+
+  pexpire(key: RedisKey, milliseconds: number) {
+    return this.redisClient.pexpire(key, milliseconds)
+  }
+
+  /** SET key value NX PX ttl — atomic acquire-if-absent, used for the monitor lease. */
+  async setIfAbsent(key: RedisKey, value: string, ttlMs: number): Promise<boolean> {
+    return (await this.redisClient.set(key, value, 'PX', ttlMs, 'NX')) === 'OK'
+  }
+
+  increment(key: RedisKey) {
+    return this.redisClient.incr(key)
   }
 
   sadd(key: string, ...values: string[]) {
@@ -59,5 +60,19 @@ export class RedisRepository implements OnModuleDestroy {
 
   smembers(key: string) {
     return this.redisClient.smembers(key)
+  }
+
+  scard(key: RedisKey) {
+    return this.redisClient.scard(key)
+  }
+
+  /** O(1) membership test. */
+  sismember(key: RedisKey, value: string) {
+    return this.redisClient.sismember(key, value)
+  }
+
+  /** O(N) in the number of values tested, not in set cardinality. Requires Redis >= 6.2. */
+  smismember(key: RedisKey, values: string[]) {
+    return this.redisClient.smismember(key, ...values)
   }
 }
