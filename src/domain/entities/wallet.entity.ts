@@ -1,9 +1,12 @@
 import { Chain } from '@/common/enums'
 import { ApiProperty } from '@nestjs/swagger'
 import { IsEnum, IsPositive, IsString } from 'class-validator'
-import { Column, CreateDateColumn, DeleteDateColumn, Entity, PrimaryGeneratedColumn, Unique, UpdateDateColumn } from 'typeorm'
+import { Column, CreateDateColumn, DeleteDateColumn, Entity, Index, PrimaryGeneratedColumn, Unique, UpdateDateColumn } from 'typeorm'
 
 @Unique(['address', 'chain'])
+// `chain` is the *second* column of the unique index, so a query filtering on chain alone
+// cannot use it — the boot-time seed was a sequential scan of the whole table.
+@Index(['chain'])
 @Entity()
 export class Wallet {
   @ApiProperty()

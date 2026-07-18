@@ -1,6 +1,5 @@
 import { Chain } from '@/common/enums'
 import { fireAndForget, formatBaseUnits, SerialQueue } from '@/common/utils'
-import { Wallet } from '@/domain/entities/wallet.entity'
 import { WalletRepository } from '@/domain/repositories/walletRepository'
 import { EthMonitorService } from '@/infrastructure/blockchain/eth/ethMonitor.service'
 import { LeaderElectionService } from '@/infrastructure/redis/leaderElection.service'
@@ -28,13 +27,7 @@ export class EthMonitorUseCase implements OnModuleInit, OnApplicationShutdown {
     // makes every instance scan the same blocks.
     if (!(await this.leaderElectionService.acquire())) return
 
-    const dbWallets = await this.getDBWallets()
-    if (dbWallets.length) {
-      // Awaited, not fire-and-forget: starting the monitor before the allow-list is
-      // populated means deposits arriving in that window are not recognised.
-      await this.redisService.addAddress(Chain.ETH, dbWallets)
-      await this.redisService.verifyAddressCache(Chain.ETH, dbWallets.length)
-    }
+    await this.seedAddressCache()
 
     this.execute()
 
@@ -48,8 +41,24 @@ export class EthMonitorUseCase implements OnModuleInit, OnApplicationShutdown {
     // void this.ethMonitorService.start(Chain.EVM_FANTOM)
   }
 
-  async getDBWallets(): Promise<Wallet['address'][]> {
-    return this.walletRepository.getWalletsByChain(Chain.ETH)
+  /**
+   * Rebuilds the monitored-address cache from Postgres, which is authoritative.
+   *
+   * Streamed in batches rather than loaded into one array: at 3M+ wallets a single query
+   * materialises the whole set in memory before the monitor can start. Awaited, because
+   * starting the monitor before the allow-list is populated means deposits arriving in that
+   * window are not recognised.
+   */
+  private async seedAddressCache(): Promise<void> {
+    let total = 0
+
+    for await (const addresses of this.walletRepository.iterateAddressesByChain(Chain.ETH)) {
+      await this.redisService.addAddress(Chain.ETH, addresses)
+      total += addresses.length
+    }
+
+    if (total) await this.redisService.verifyAddressCache(Chain.ETH, total)
+    this.logger.log(`Seeded ${total} ETH address(es)`)
   }
 
   execute(): void {
