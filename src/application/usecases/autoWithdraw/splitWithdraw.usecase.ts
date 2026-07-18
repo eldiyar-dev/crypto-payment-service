@@ -22,7 +22,9 @@ import { TronEnergyService, TronInfoService } from '@/infrastructure/blockchain/
 import { ReportService } from '@/infrastructure/clientApi/report.service'
 import { WithdrawService } from '@/infrastructure/clientApi/withdraw.service'
 import { RedisService } from '@/infrastructure/redis/redis.service'
+import { TConfiguration } from '@/infrastructure/config/configuration'
 import { Injectable, Logger } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
 
 type TWithdrawParams = {
   currency: Currency
@@ -60,8 +62,6 @@ type TWithdrawAccountParams = {
 
 /** Up to 0.01 TRX of dust, so repeated fee transfers are distinguishable on-chain. */
 const TRON_FEE_DUST_SUN = 10_000n
-/** Ceiling used when gas estimation fails, in wei (0.0007 ETH). */
-const EVM_GAS_FALLBACK_WEI = 700_000_000_000_000n
 /** Headroom added on top of the estimate, in wei (0.0001 ETH). */
 const EVM_GAS_BUFFER_WEI = 100_000_000_000_000n
 
@@ -88,6 +88,7 @@ export class SplitWithdrawUseCase {
     private readonly tronInfoService: TronInfoService,
     private readonly ethInfoService: EthInfoService,
     private readonly redisService: RedisService,
+    private readonly configService: ConfigService<TConfiguration>,
   ) {}
 
   /**
@@ -304,7 +305,7 @@ export class SplitWithdrawUseCase {
       }
 
       if (isEvmNetwork(chain)) {
-        const txHash = await this.calculateAndSendEthForFee(fromAddress, mainPrivateKey, amount, currency, chain)
+        const txHash = await this.calculateAndSendEthForFee(fromAddress, toAddress, mainPrivateKey, amount, currency, chain)
         if (!txHash) return reportLog()
 
         const txHash2 = await withdrawAccount()
@@ -397,35 +398,45 @@ export class SplitWithdrawUseCase {
 
   /**
    * Calculate and send ETH for fee
-   * @param toAddress - Address to send the ETH to
-   * @param privateKey - Private key of the wallet to send the ETH from
+   * @param sourceAddress - The wallet that will perform the withdrawal, and receives the gas
+   * @param destinationAddress - Where the withdrawal is going; part of the gas estimate
+   * @param privateKey - Private key of the fee wallet funding the gas
    * @param amount - Amount the source wallet is about to send, in base units
    * @param currency - Currency (e.g., Currency.USDT, Currency.ETH)
    * @param evmNetwork - EVM network
-   * @returns txHash if the ETH was sent successfully, false otherwise
+   * @returns txHash if the gas was sent successfully, false otherwise
    */
-  private async calculateAndSendEthForFee(toAddress: string, privateKey: string, amount: bigint, currency: Currency, evmNetwork: EvmNetwork) {
-    // If the estimate is unavailable, fall back to a ceiling.
-    const gasCostInWei =
+  private async calculateAndSendEthForFee(sourceAddress: string, destinationAddress: string, privateKey: string, amount: bigint, currency: Currency, evmNetwork: EvmNetwork) {
+    // Estimate the transfer that actually needs the gas: source -> destination. This used to
+    // estimate a transfer FROM the fee wallet TO the source address — the opposite direction,
+    // from the wrong account. ERC-20 gas differs materially by direction (an SSTORE to a zero
+    // balance is ~20k gas versus ~5k to a non-zero one), so the top-up could under-fund the
+    // withdrawal and the single retry would then fail too.
+    const estimated =
       currency === Currency.USDT
-        ? ((await this.ethInfoService.getUSDTGasCostInWei(privateKey, toAddress, amount, evmNetwork)) ?? EVM_GAS_FALLBACK_WEI)
-        : ((await this.ethInfoService.getEthTransferGasCostInWei(privateKey, toAddress, amount, evmNetwork)) ?? EVM_GAS_FALLBACK_WEI)
+        ? await this.ethInfoService.getUSDTGasCostInWei(sourceAddress, destinationAddress, amount, evmNetwork)
+        : await this.ethInfoService.getEthTransferGasCostInWei(sourceAddress, destinationAddress, amount, evmNetwork)
+
+    // The fallback is per-chain: a single hardcoded ETH-shaped constant is meaningless on BSC,
+    // Polygon, Avalanche or Fantom, whose native token is not ETH.
+    const gasCostInWei = estimated ?? parseBaseUnits(this.configService.get(`evmNetworks.${evmNetwork}.nativeGasFallback`, { infer: true })!, ETH_DECIMALS)
+    if (estimated === null) this.logger.warn(`Gas estimation failed for ${sourceAddress} on ${evmNetwork}; using the configured fallback`)
 
     this.logger.log(`Gas cost for fee: ${formatBaseUnits(gasCostInWei, ETH_DECIMALS)} network: ${evmNetwork}`)
     const txHash = await this.blockchainTransactionService.sendFunds({
       currency: Currency.ETH,
-      toAddress,
+      toAddress: sourceAddress,
       amount: gasCostInWei + EVM_GAS_BUFFER_WEI,
       privateKey,
       chain: evmNetwork,
     })
     if (!txHash) {
-      this.logger.error(`Failed to send ${formatBaseUnits(gasCostInWei, ETH_DECIMALS)} ETH for fee to ${toAddress} network: ${evmNetwork}`)
+      this.logger.error(`Failed to send ${formatBaseUnits(gasCostInWei, ETH_DECIMALS)} gas to ${sourceAddress} network: ${evmNetwork}`)
       return false
     }
 
     await this.redisService.addFeeTransactionHash(txHash)
-    this.logger.log(`Send ${formatBaseUnits(gasCostInWei, ETH_DECIMALS)} ETH for fee to ${toAddress} network: ${evmNetwork} txHash: ${txHash}`)
+    this.logger.log(`Sent ${formatBaseUnits(gasCostInWei, ETH_DECIMALS)} gas to ${sourceAddress} network: ${evmNetwork} txHash: ${txHash}`)
     return txHash
   }
 }

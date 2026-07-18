@@ -91,6 +91,7 @@ export default () =>
         coinDecimals: {
           USDT: 6,
         },
+        nativeGasFallback: '0.0007',
         rpcUrl: process.env.ETH_RPC_URL,
         wssUrl: process.env.ETH_WSS_URL,
       },
@@ -101,6 +102,7 @@ export default () =>
         coinDecimals: {
           USDT: 6,
         },
+        nativeGasFallback: '0.0002',
         rpcUrl: process.env.BASE_RPC_URL,
         wssUrl: process.env.BASE_WSS_URL,
       },
@@ -111,6 +113,7 @@ export default () =>
         coinDecimals: {
           USDT: 18,
         },
+        nativeGasFallback: '0.003',
         rpcUrl: process.env.BSC_RPC_URL,
         wssUrl: process.env.BSC_WSS_URL,
       },
@@ -121,6 +124,7 @@ export default () =>
         coinDecimals: {
           USDT: 6,
         },
+        nativeGasFallback: '0.05',
         rpcUrl: process.env.POLYGON_RPC_URL,
         wssUrl: process.env.POLYGON_WSS_URL,
       },
@@ -131,6 +135,7 @@ export default () =>
         coinDecimals: {
           USDT: 6,
         },
+        nativeGasFallback: '0.0005',
         rpcUrl: process.env.ARBITRUM_RPC_URL,
         wssUrl: process.env.ARBITRUM_WSS_URL,
       },
@@ -141,6 +146,7 @@ export default () =>
         coinDecimals: {
           USDT: 6,
         },
+        nativeGasFallback: '0.0002',
         rpcUrl: process.env.OPTIMISM_RPC_URL,
         wssUrl: process.env.OPTIMISM_WSS_URL,
       },
@@ -151,6 +157,7 @@ export default () =>
         coinDecimals: {
           USDT: 6,
         },
+        nativeGasFallback: '0.02',
         rpcUrl: process.env.AVALANCHE_C_RPC_URL,
         wssUrl: process.env.AVALANCHE_C_WSS_URL,
       },
@@ -161,6 +168,7 @@ export default () =>
         coinDecimals: {
           USDT: 6,
         },
+        nativeGasFallback: '0.05',
         rpcUrl: process.env.FANTOM_RPC_URL,
         wssUrl: process.env.FANTOM_WSS_URL,
       },
@@ -203,6 +211,11 @@ export type TConfiguration = {
       coinDecimals: {
         [key in EvmCoin]: number
       }
+      /**
+       * Gas ceiling used when estimation fails, as a decimal string in the chain's NATIVE
+       * token — which is BNB on BSC, POL on Polygon, AVAX on Avalanche, not ETH.
+       */
+      nativeGasFallback: string
       rpcUrl: string
       wssUrl: string
     }

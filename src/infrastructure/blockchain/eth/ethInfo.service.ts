@@ -53,19 +53,21 @@ export class EthInfoService {
 
   /**
    * Get the total gas cost, in wei, of a USDT transfer of `amount` base units
-   * @param privateKey - The private key of the wallet
+   * @param fromAddress - The wallet that will actually send the transfer
    * @param toAddress - The address to send the transaction to
    * @param amount - The amount to send, in the token's base units
    * @param evmNetwork - EVM network
    * @returns The gas cost in wei, or null if estimation failed
    */
-  async getUSDTGasCostInWei(privateKey: string, toAddress: string, amount: bigint, evmNetwork: EvmNetwork): Promise<bigint | null> {
+  async getUSDTGasCostInWei(fromAddress: string, toAddress: string, amount: bigint, evmNetwork: EvmNetwork): Promise<bigint | null> {
     try {
       const provider = this.provider(evmNetwork)
-      const wallet = new ethers.Wallet(privateKey, provider)
-      const contract = new ethers.Contract(this.coinContractAddress(evmNetwork, 'USDT'), this.USDT_ABI, wallet)
+      const contract = new ethers.Contract(this.coinContractAddress(evmNetwork, 'USDT'), this.USDT_ABI, provider)
 
-      const gasLimit = await contract.transfer.estimateGas(toAddress, amount)
+      // `from` is the source wallet performing the real transfer. Estimating from the fee
+      // wallet in the opposite direction gave a materially different number: an ERC-20 SSTORE
+      // to a zero balance costs ~20k gas versus ~5k to a non-zero one.
+      const gasLimit = await contract.transfer.estimateGas(toAddress, amount, { from: fromAddress })
 
       const { maxFeePerGas, maxPriorityFeePerGas } = await provider.getFeeData()
 
@@ -80,19 +82,18 @@ export class EthInfoService {
 
   /**
    * Get the total gas cost, in wei, of a native transfer of `amount` wei
-   * @param privateKey - The private key of the wallet
+   * @param fromAddress - The wallet that will actually send the transfer
    * @param toAddress - The address to send ETH to
    * @param amount - The amount to send, in wei
    * @param evmNetwork - The EVM network
    * @returns The gas cost in wei, or null if estimation failed
    */
-  async getEthTransferGasCostInWei(privateKey: string, toAddress: string, amount: bigint, evmNetwork: EvmNetwork): Promise<bigint | null> {
+  async getEthTransferGasCostInWei(fromAddress: string, toAddress: string, amount: bigint, evmNetwork: EvmNetwork): Promise<bigint | null> {
     try {
       const provider = this.provider(evmNetwork)
-      const wallet = new ethers.Wallet(privateKey, provider)
 
-      // Create a transaction object for a simple ETH transfer
-      const gasLimit = await wallet.estimateGas({ to: toAddress, value: amount })
+      // Estimated for the source wallet's outbound transfer, not the fee wallet's inbound one.
+      const gasLimit = await provider.estimateGas({ from: fromAddress, to: toAddress, value: amount })
 
       // Get current gas price data
       const { maxFeePerGas, gasPrice } = await provider.getFeeData()
