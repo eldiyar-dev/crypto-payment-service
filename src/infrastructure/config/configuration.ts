@@ -1,4 +1,4 @@
-import { Chain } from '@/common/enums'
+import { Chain, Currency } from '@/common/enums'
 import { EvmCoin, EvmNetwork } from '@/common/interfaces'
 import { ChainCheckpoint } from '@/domain/entities/chainCheckpoint.entity'
 import { Deposit } from '@/domain/entities/deposit.entity'
@@ -76,6 +76,29 @@ export default () =>
       .split(',')
       .map((network) => network.trim())
       .filter(Boolean),
+    /**
+     * Automated-outflow controls, as decimal strings in each currency's display units.
+     * Empty or unset disables the control.
+     *
+     * There is otherwise no independent limit on automated fund movement: any detected deposit
+     * triggers an outbound transfer, and the destination comes from an external API.
+     */
+    sweep_limits: {
+      /** A single deposit above this is held for manual approval instead of swept. */
+      maxAutoSweep: {
+        BTC: process.env.MAX_AUTO_SWEEP_BTC ?? '',
+        ETH: process.env.MAX_AUTO_SWEEP_ETH ?? '',
+        TRX: process.env.MAX_AUTO_SWEEP_TRX ?? '',
+        USDT: process.env.MAX_AUTO_SWEEP_USDT ?? '',
+      },
+      /** Rolling one-hour ceiling on total automated outflow per chain+currency. */
+      hourlyTotal: {
+        BTC: process.env.MAX_HOURLY_SWEEP_BTC ?? '',
+        ETH: process.env.MAX_HOURLY_SWEEP_ETH ?? '',
+        TRX: process.env.MAX_HOURLY_SWEEP_TRX ?? '',
+        USDT: process.env.MAX_HOURLY_SWEEP_USDT ?? '',
+      },
+    },
     ip_whitelist: (process.env.IP_WHITELIST ?? '')?.split(','),
     api_key_secret: process.env.API_KEY_SECRET,
 
@@ -199,6 +222,10 @@ export type TConfiguration = {
   allow_legacy_plaintext_keys: boolean
   monitor_leader_election: boolean
   enabled_evm_networks: string[]
+  sweep_limits: {
+    maxAutoSweep: Record<Currency, string>
+    hourlyTotal: Record<Currency, string>
+  }
   ip_whitelist: string[]
   api_key_secret: string
 

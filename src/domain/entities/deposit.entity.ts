@@ -17,6 +17,13 @@ export enum DepositStatus {
   SWEPT = 'SWEPT',
   /** The sweep failed; see failureReason. Requires operator attention. */
   FAILED = 'FAILED',
+  /**
+   * Withheld from automatic sweeping by a value ceiling or velocity limit.
+   *
+   * No funds have moved. Releasing it is a deliberate operator action — this is the manual
+   * approval gate for large or unusual outflows.
+   */
+  HELD = 'HELD',
 }
 
 /**

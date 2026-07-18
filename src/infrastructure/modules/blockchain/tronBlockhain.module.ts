@@ -3,13 +3,14 @@ import { TronEnergyService, TronInfoService, TronMonitorService, TronTransaction
 import { ProcessDepositUseCase } from '@/application/usecases/monitor-blockchain/processDeposit.usecase'
 import { Module } from '@nestjs/common'
 import { DepositService } from '../../clientApi/deposit.service'
+import { ReportService } from '../../clientApi/report.service'
 import { SplitWithdrawModule } from '../splitWithdraw.module'
 import { WalletModule } from '../wallet.module'
 
 @Module({
   imports: [WalletModule, SplitWithdrawModule],
   controllers: [],
-  providers: [TronMonitorUseCase, TronMonitorService, TronTransactionService, TronInfoService, DepositService, TronEnergyService, ProcessDepositUseCase],
+  providers: [TronMonitorUseCase, TronMonitorService, TronTransactionService, TronInfoService, DepositService, TronEnergyService, ProcessDepositUseCase, ReportService],
   exports: [TronMonitorUseCase, TronTransactionService, TronInfoService, TronEnergyService],
 })
 export class TronBlockhainModule {}

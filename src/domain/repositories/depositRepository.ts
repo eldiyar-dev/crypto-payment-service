@@ -72,6 +72,30 @@ export class DepositRepository extends Repository<Deposit> {
     await this.update({ id }, { status: DepositStatus.SWEPT, failureReason: null })
   }
 
+  /** DETECTED -> HELD. No funds move until an operator releases it. */
+  async markHeld(id: number, reason: string): Promise<boolean> {
+    const result = await this.update({ id, status: DepositStatus.DETECTED }, { status: DepositStatus.HELD, failureReason: reason.slice(0, 1000) })
+    return result.affected === 1
+  }
+
+  /**
+   * Total base units swept for a currency+chain since `since`, for velocity limiting.
+   *
+   * Counts SWEEPING as well as SWEPT: a sweep in flight has already committed the funds, so
+   * excluding it would let the limit be exceeded by whatever is mid-flight.
+   */
+  async sumSweptSince(chain: Chain, currency: Currency, since: Date): Promise<bigint> {
+    const row = await this.createQueryBuilder('deposit')
+      .select('COALESCE(SUM(deposit.amountBaseUnits), 0)', 'total')
+      .where('deposit.chain = :chain', { chain })
+      .andWhere('deposit.currency = :currency', { currency })
+      .andWhere('deposit.status IN (:...statuses)', { statuses: [DepositStatus.SWEEPING, DepositStatus.SWEPT] })
+      .andWhere('deposit.updated_at >= :since', { since })
+      .getRawOne<{ total: string }>()
+
+    return BigInt(row?.total ?? '0')
+  }
+
   async markFailed(id: number, failureReason: string): Promise<void> {
     // Postgres truncates nothing for us; keep the reason bounded so a huge RPC error body
     // cannot bloat the row.
