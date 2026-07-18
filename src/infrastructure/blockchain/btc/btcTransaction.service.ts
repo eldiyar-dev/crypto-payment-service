@@ -19,6 +19,12 @@ type SendBTCParams = {
   privateKey: string
 }
 
+type SendBTCToManyParams = {
+  /** One output per destination. All are funded by a single transaction. */
+  outputs: Array<{ toAddress: string; amount: bigint }>
+  privateKey: string
+}
+
 @Injectable()
 export class BtcTransactionService {
   private readonly logger = new Logger(BtcTransactionService.name)
@@ -35,7 +41,25 @@ export class BtcTransactionService {
   }
 
   async sendBTC({ toAddress, amount, privateKey }: SendBTCParams): Promise<string | null> {
+    return this.sendBTCToMany({ outputs: [{ toAddress, amount }], privateKey })
+  }
+
+  /**
+   * Pays several destinations from one transaction.
+   *
+   * This is what makes a two-leg split safe on Bitcoin. Sending the legs as two sequential
+   * transactions is worse than a no-op on failure: the first spends *every* UTXO, and the
+   * second immediately re-queries getUTXOs, which either returns nothing (change still
+   * unconfirmed, so leg 2 fails and the split is half-done) or returns the same now-spent
+   * UTXOs, producing a conflicting double-spend. One transaction with both outputs either
+   * lands whole or not at all.
+   */
+  async sendBTCToMany({ outputs, privateKey }: SendBTCToManyParams): Promise<string | null> {
     try {
+      if (!outputs.length) {
+        this.logger.error('No outputs supplied')
+        return null
+      }
       const keyPair = ECPair.fromWIF(privateKey, this.network)
       const { publicKey } = keyPair
 
@@ -73,7 +97,7 @@ export class BtcTransactionService {
       }
 
       // Already in satoshi — exact.
-      const amountSatoshi = amount
+      const totalOutput = outputs.reduce((sum, output) => sum + output.amount, 0n)
       const fee = 1000n // satoshi
 
       if (totalInput < fee) {
@@ -83,18 +107,19 @@ export class BtcTransactionService {
 
       // Fail rather than substitute. "Sending max possible" returned a transaction hash that
       // the caller reported as a completed withdrawal, for an amount nobody requested.
-      if (totalInput < amountSatoshi + fee) {
+      if (totalInput < totalOutput + fee) {
         this.logger.error(
-          `Insufficient funds for fromAddress: ${fromAddress}: have ${formatBaseUnits(totalInput, BTC_DECIMALS)} BTC, need ${formatBaseUnits(amountSatoshi + fee, BTC_DECIMALS)} BTC (amount + fee)`,
+          `Insufficient funds for fromAddress: ${fromAddress}: have ${formatBaseUnits(totalInput, BTC_DECIMALS)} BTC, need ${formatBaseUnits(totalOutput + fee, BTC_DECIMALS)} BTC (amount + fee)`,
         )
         return null
       }
 
-      const sendAmount = amountSatoshi
+      for (const output of outputs) {
+        if (output.amount <= 0n) continue
+        psbt.addOutput({ address: output.toAddress, value: Number(output.amount) })
+      }
 
-      psbt.addOutput({ address: toAddress, value: Number(sendAmount) })
-
-      const change = totalInput - sendAmount - fee
+      const change = totalInput - totalOutput - fee
       if (change > 0n) psbt.addOutput({ address: fromAddress, value: Number(change) })
 
       // 3. Sign
@@ -112,14 +137,14 @@ export class BtcTransactionService {
       // 4. Send through Ankr
       const txHash = await this.broadcastTransaction(txHex)
       if (!txHash) {
-        this.logger.error(`Failed to broadcast transaction for fromAddress: ${fromAddress} amount: ${formatBaseUnits(amount, BTC_DECIMALS)} BTC`)
+        this.logger.error(`Failed to broadcast transaction for fromAddress: ${fromAddress} amount: ${formatBaseUnits(totalOutput, BTC_DECIMALS)} BTC`)
         return null
       }
 
-      this.logger.log(`Successfully sent ${formatBaseUnits(amount, BTC_DECIMALS)} BTC to ${toAddress} txHash: ${txHash}`)
+      this.logger.log(`Successfully sent ${formatBaseUnits(totalOutput, BTC_DECIMALS)} BTC across ${outputs.length} output(s) txHash: ${txHash}`)
       return txHash
     } catch (error) {
-      this.logger.error(`Error sending to ${toAddress} ${formatBaseUnits(amount, BTC_DECIMALS)} BTC: ${(error as Error).message}`, error)
+      this.logger.error(`Error sending BTC from ${outputs.length} output(s): ${(error as Error).message}`)
       return null
     }
   }

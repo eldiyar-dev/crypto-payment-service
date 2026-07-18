@@ -4,6 +4,7 @@ import { AESCipherService } from '@/common/services/aes.service'
 import { ETH_DECIMALS, formatBaseUnits, generateUniqueAmount, isEvmNetwork, parseBaseUnits, sleep, splitAmountByPercentage, toDisplayNumber, TRX_DECIMALS } from '@/common/utils'
 import { Wallet } from '@/domain/entities/wallet.entity'
 import { WalletRepository } from '@/domain/repositories/walletRepository'
+import { BtcTransactionService } from '@/infrastructure/blockchain/btc'
 import { EthInfoService } from '@/infrastructure/blockchain/eth/ethInfo.service'
 import { BlockchainTransactionService } from '@/infrastructure/blockchain/transaction'
 import { TronEnergyService, TronInfoService } from '@/infrastructure/blockchain/tron'
@@ -70,6 +71,7 @@ export class SplitWithdrawUseCase {
     private readonly walletRepository: WalletRepository,
     private readonly aesCipherService: AESCipherService,
     private readonly blockchainTransactionService: BlockchainTransactionService,
+    private readonly btcTransactionService: BtcTransactionService,
     private readonly reportService: ReportService,
     private readonly tronEnergyService: TronEnergyService,
     private readonly tronInfoService: TronInfoService,
@@ -143,10 +145,16 @@ export class SplitWithdrawUseCase {
         return { success: false, reason: 'Unable to resolve private key' }
       }
 
+      // On Bitcoin the two legs MUST share one transaction. Sent sequentially, leg 1 spends
+      // every UTXO and leg 2 either finds nothing (change still unconfirmed) or re-spends the
+      // same now-spent UTXOs as a conflicting double-spend.
+      if (chain === Chain.BTC) {
+        return await this.withdrawBtcSplit({ fromAddress: address, fromAddressPrivateKey, mainAddress, additionalAddress, mainAmount, additionalAmount, decimals, currency })
+      }
+
       // Withdraw to additionalAddress
-      let additionalSent = true
       if (additionalAmount > 0n) {
-        additionalSent = await this.withdrawAccount({
+        const additionalSent = await this.withdrawAccount({
           fromAddress: address,
           fromAddressPrivateKey,
           toAddress: additionalAddress,
@@ -156,12 +164,16 @@ export class SplitWithdrawUseCase {
           currency,
           chain,
         })
+
+        // Stop here rather than attempting leg 2. The return value used to be discarded, so a
+        // failed first leg did not prevent the second — and the wallet was left half-swept
+        // with no record of which leg had landed.
+        if (!additionalSent) return { success: false, reason: 'Additional leg failed; main leg not attempted' }
       }
 
       // Withdraw to mainAddress
-      let mainSent = true
       if (mainAmount > 0n) {
-        mainSent = await this.withdrawAccount({
+        const mainSent = await this.withdrawAccount({
           fromAddress: address,
           fromAddressPrivateKey,
           toAddress: mainAddress,
@@ -171,14 +183,65 @@ export class SplitWithdrawUseCase {
           currency,
           chain,
         })
-      }
-      if (additionalSent && mainSent) return { success: true }
 
-      return { success: false, reason: `Withdrawal incomplete (additional: ${additionalSent ? 'sent' : 'failed'}, main: ${mainSent ? 'sent' : 'failed'})` }
+        if (!mainSent) {
+          // Leg 1 has already landed, so this is a genuinely half-swept wallet: it needs
+          // operator attention, not a silent 'failed'.
+          const partial = additionalAmount > 0n
+          return { success: false, reason: partial ? 'PARTIAL SWEEP: additional leg sent, main leg failed' : 'Main leg failed' }
+        }
+      }
+
+      return { success: true }
     } catch (error) {
       this.logger.error(`Withdraw failed for ${address} ${ref}: ${error.message}`, error)
       return { success: false, reason: `Withdraw threw: ${(error as Error).message}` }
     }
+  }
+
+  /**
+   * Sweeps both legs of a Bitcoin split in a single transaction.
+   *
+   * Atomic by construction: either both destinations are paid or neither is, so there is no
+   * half-swept state to reconcile. There is no fee top-up path on BTC, so a failure here is
+   * terminal for this deposit and is reported.
+   */
+  private async withdrawBtcSplit({
+    fromAddress,
+    fromAddressPrivateKey,
+    mainAddress,
+    additionalAddress,
+    mainAmount,
+    additionalAmount,
+    decimals,
+    currency,
+  }: {
+    fromAddress: string
+    fromAddressPrivateKey: string
+    mainAddress: string
+    additionalAddress: string
+    mainAmount: bigint
+    additionalAmount: bigint
+    decimals: number
+    currency: Currency
+  }): Promise<TWithdrawResult> {
+    const outputs = [
+      { toAddress: additionalAddress, amount: additionalAmount },
+      { toAddress: mainAddress, amount: mainAmount },
+    ].filter((output) => output.amount > 0n)
+
+    if (!outputs.length) return { success: true }
+
+    const txHash = await this.btcTransactionService.sendBTCToMany({ outputs, privateKey: fromAddressPrivateKey })
+    if (!txHash) {
+      const total = mainAmount + additionalAmount
+      void this.reportService.sendReport({ currency, address: fromAddress, ...this.reportAmount(total, decimals), message: 'BTC split withdrawal failed' })
+      this.logger.error(`BTC split withdrawal failed from ${fromAddress}`)
+      return { success: false, reason: 'BTC split withdrawal failed' }
+    }
+
+    this.logger.log(`BTC split withdrawal complete from ${fromAddress} txHash: ${txHash}`)
+    return { success: true }
   }
 
   private async withdrawAccount({ fromAddress, toAddress, amount, decimals, fromAddressPrivateKey, mainPrivateKey, currency, chain, nonce }: TWithdrawAccountParams) {
