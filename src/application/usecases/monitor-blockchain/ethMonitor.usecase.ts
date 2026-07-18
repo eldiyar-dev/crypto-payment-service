@@ -3,6 +3,7 @@ import { formatBaseUnits, SerialQueue } from '@/common/utils'
 import { Wallet } from '@/domain/entities/wallet.entity'
 import { WalletRepository } from '@/domain/repositories/walletRepository'
 import { EthMonitorService } from '@/infrastructure/blockchain/eth/ethMonitor.service'
+import { LeaderElectionService } from '@/infrastructure/redis/leaderElection.service'
 import { RedisService } from '@/infrastructure/redis/redis.service'
 import { Injectable, Logger, OnApplicationShutdown, OnModuleInit } from '@nestjs/common'
 import { ProcessDepositUseCase } from './processDeposit.usecase'
@@ -19,9 +20,14 @@ export class EthMonitorUseCase implements OnModuleInit, OnApplicationShutdown {
     private readonly walletRepository: WalletRepository,
     private readonly processDepositUseCase: ProcessDepositUseCase,
     private readonly redisService: RedisService,
+    private readonly leaderElectionService: LeaderElectionService,
   ) {}
 
   async onModuleInit() {
+    // Only one instance may run the monitors. Without this, raising PM2 `instances`
+    // makes every instance scan the same blocks.
+    if (!(await this.leaderElectionService.acquire())) return
+
     const dbWallets = await this.getDBWallets()
     if (dbWallets.length) {
       // Awaited, not fire-and-forget: starting the monitor before the allow-list is

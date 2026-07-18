@@ -67,6 +67,10 @@ export default () =>
     // default: a plaintext key is refused rather than silently used. Set to 'true' only while
     // migrating legacy rows, then unset once every key has been re-encrypted and rotated.
     allow_legacy_plaintext_keys: process.env.ALLOW_LEGACY_PLAINTEXT_KEYS === 'true',
+    // Opt-in. With PM2 instances > 1 each instance would otherwise run its own monitors and
+    // scan the same blocks; the deposit ledger stops that duplicating withdrawals, this stops
+    // it duplicating the scan work.
+    monitor_leader_election: process.env.MONITOR_LEADER_ELECTION === 'true',
     ip_whitelist: (process.env.IP_WHITELIST ?? '')?.split(','),
     api_key_secret: process.env.API_KEY_SECRET,
 
@@ -180,6 +184,7 @@ export type TConfiguration = {
   allow_insecure_client_api: boolean
   private_key_secret: string
   allow_legacy_plaintext_keys: boolean
+  monitor_leader_election: boolean
   ip_whitelist: string[]
   api_key_secret: string
 

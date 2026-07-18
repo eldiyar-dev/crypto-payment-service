@@ -49,6 +49,15 @@ export class RedisRepository implements OnModuleDestroy {
     return this.redisClient.expire(key, seconds)
   }
 
+  pexpire(key: RedisKey, milliseconds: number) {
+    return this.redisClient.pexpire(key, milliseconds)
+  }
+
+  /** SET key value NX PX ttl — atomic acquire-if-absent, used for the monitor lease. */
+  async setIfAbsent(key: RedisKey, value: string, ttlMs: number): Promise<boolean> {
+    return (await this.redisClient.set(key, value, 'PX', ttlMs, 'NX')) === 'OK'
+  }
+
   sadd(key: string, ...values: string[]) {
     return this.redisClient.sadd(key, ...values)
   }
