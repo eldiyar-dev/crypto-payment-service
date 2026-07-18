@@ -59,6 +59,16 @@ type TWithdrawAccountParams = {
   chain: Chain
 }
 
+/**
+ * Minimum USDT deposit that justifies renting energy.
+ *
+ * The detection floor is 0.5 USDT, but renting 160k energy costs real TRX, so repeated dust
+ * deposits were a way to drain the shared Tronsave balance for far more than they carried.
+ */
+const MIN_USDT_FOR_ENERGY_RENTAL = '5'
+/** Per-order ceiling on energy rental cost, in TRX. */
+const MAX_ENERGY_RENTAL_TRX = 30
+
 /** Up to 0.01 TRX of dust, so repeated fee transfers are distinguishable on-chain. */
 const TRON_FEE_DUST_SUN = 10_000n
 /** Headroom added on top of the estimate, in wei (0.0001 ETH). */
@@ -128,8 +138,41 @@ export class SplitWithdrawUseCase {
         return { success: false, reason: `Invalid split percentage: ${String(pie)}` }
       }
 
+      // Load and validate the source wallet BEFORE spending anything on energy. Renting first
+      // meant an attacker could burn the shared Tronsave balance by sending dust to addresses
+      // that have no wallet record at all.
+      const wallet = await this.walletRepository.getWalletByAddress(address)
+      if (!wallet) {
+        // The only failure branch in this file that used to return without notifying anyone.
+        // Reachable in normal operation: Wallet has a deleted_at soft-delete column and
+        // TypeORM's findOne excludes soft-deleted rows, so a deleted wallet kept detecting
+        // deposits that could never be swept — silently.
+        this.logger.error(`Source wallet not found for ${address} ${ref}`)
+        void this.reportService.sendReport({ currency, address, ...this.reportAmount(amount, decimals), message: `Source wallet not found for ${address}` })
+
+        // Stop advertising an address whose key we cannot load, so it stops generating
+        // deposits that can only fail.
+        await this.redisService.removeAddress(chain, address)
+        this.logger.warn(`Removed ${address} from the ${chain} monitored set: no wallet record`)
+
+        return { success: false, reason: 'Source wallet not found' }
+      }
+
       // Rent energy
       if (chain === Chain.TRON && currency === Currency.USDT) {
+        // Renting costs real TRX. Refuse when the deposit is not worth the rental, otherwise
+        // repeated minimum-size deposits (0.5 USDT) cost far more in energy than they carry.
+        if (amount < parseBaseUnits(MIN_USDT_FOR_ENERGY_RENTAL, decimals)) {
+          this.logger.error(`Deposit of ${formatBaseUnits(amount, decimals)} USDT to ${address} is below the ${MIN_USDT_FOR_ENERGY_RENTAL} USDT energy-rental threshold ${ref}`)
+          void this.reportService.sendReport({
+            currency,
+            address,
+            ...this.reportAmount(amount, decimals),
+            message: `Deposit too small to justify energy rental (min ${MIN_USDT_FOR_ENERGY_RENTAL} USDT)`,
+          })
+          return { success: false, reason: 'Deposit below the energy-rental threshold' }
+        }
+
         const orderId = await this.rentEnergy(address, mainPrivateKey)
         if (!orderId) return { success: false, reason: 'Failed to rent TRON energy' }
         this.logger.log(`Successfully rented energy for ${address} orderId: ${orderId}`)
@@ -158,24 +201,6 @@ export class SplitWithdrawUseCase {
         this.logger.error(`Split does not conserve value for ${address} ${ref}: ${mainAmount} + ${additionalAmount} !== ${amount}`)
         void this.reportService.sendReport({ currency, address, ...this.reportAmount(amount, decimals), message: `Split does not conserve value for ${address}` })
         return { success: false, reason: 'Split does not conserve value' }
-      }
-
-      // Get source wallet's encrypted private key
-      const wallet = await this.walletRepository.getWalletByAddress(address)
-      if (!wallet) {
-        // The only failure branch in this file that used to return without notifying anyone.
-        // Reachable in normal operation: Wallet has a deleted_at soft-delete column and
-        // TypeORM's findOne excludes soft-deleted rows, so a deleted wallet kept detecting
-        // deposits that could never be swept — silently.
-        this.logger.error(`Source wallet not found for ${address} ${ref}`)
-        void this.reportService.sendReport({ currency, address, ...this.reportAmount(amount, decimals), message: `Source wallet not found for ${address}` })
-
-        // Stop advertising an address whose key we cannot load, so it stops generating
-        // deposits that can only fail.
-        await this.redisService.removeAddress(chain, address)
-        this.logger.warn(`Removed ${address} from the ${chain} monitored set: no wallet record`)
-
-        return { success: false, reason: 'Source wallet not found' }
       }
 
       // Decrypt in memory at send time — key material is never held decrypted at rest.
@@ -342,7 +367,7 @@ export class SplitWithdrawUseCase {
    */
   private async rentEnergy(receiverAddress: string, fromAddressPrivateKey: string) {
     const energyAmount = 160_000
-    const orderId = await this.tronEnergyService.buyResourceUsingApiKey({ buyAmount: energyAmount, receiverAddress })
+    const orderId = await this.tronEnergyService.buyResourceUsingApiKey({ buyAmount: energyAmount, receiverAddress, maxCostTrx: MAX_ENERGY_RENTAL_TRX })
     if (orderId) return orderId
 
     // send 0.4 TRX for active account
@@ -366,7 +391,7 @@ export class SplitWithdrawUseCase {
     this.logger.log(`Successfully sent ${amountTRX} TRX for active account to ${receiverAddress}`)
 
     // Rent energy again after tx confirmation
-    const orderId2 = await this.tronEnergyService.buyResourceUsingApiKey({ buyAmount: energyAmount, receiverAddress })
+    const orderId2 = await this.tronEnergyService.buyResourceUsingApiKey({ buyAmount: energyAmount, receiverAddress, maxCostTrx: MAX_ENERGY_RENTAL_TRX })
     if (orderId2) return orderId2
 
     this.logger.error(`Failed to buy ${energyAmount} Energy for ${receiverAddress}`)

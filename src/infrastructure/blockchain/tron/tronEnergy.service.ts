@@ -235,17 +235,25 @@ export class TronEnergyService {
    * @param receiverAddress - Tron address to receive the ENERGY
    * @returns Order ID
    */
-  async buyResourceUsingApiKey({ buyAmount, receiverAddress }: { buyAmount: number; receiverAddress: string }) {
+  async buyResourceUsingApiKey({ buyAmount, receiverAddress, maxCostTrx }: { buyAmount: number; receiverAddress: string; maxCostTrx?: number }) {
     const durationSec = 900 // 15 minutes
 
     // Get estimate for the requested amount and duration
     const estimateData = await this.getEstimate(buyAmount, durationSec)
     if (!estimateData.data || estimateData.error) return null
 
-    const { unitPrice, availableResource } = estimateData.data
+    const { unitPrice, availableResource, estimateTrx } = estimateData.data
     const isReadyFulfilled = availableResource >= buyAmount
     if (!isReadyFulfilled) {
       this.logger.error('Not enough available resource to fulfill the order', estimateData)
+      return null
+    }
+
+    // This path ignored estimateTrx entirely, so an order was placed at whatever the market
+    // asked. A price spike — or a stream of dust deposits — could drain the shared Tronsave
+    // balance without any ceiling.
+    if (maxCostTrx !== undefined && estimateTrx > maxCostTrx) {
+      this.logger.error(`Refusing energy order for ${receiverAddress}: estimated ${estimateTrx} TRX exceeds the ${maxCostTrx} TRX ceiling`)
       return null
     }
 
