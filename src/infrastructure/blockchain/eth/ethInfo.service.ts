@@ -3,6 +3,7 @@ import { TConfiguration } from '@/infrastructure/config/configuration'
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { ethers } from 'ethers'
+import { EvmProviderFactory } from './evmProvider.factory'
 
 @Injectable()
 export class EthInfoService {
@@ -12,13 +13,16 @@ export class EthInfoService {
 
   private readonly ERC20_BALANCE_ABI = ['function balanceOf(address owner) view returns (uint256)']
 
-  constructor(private readonly configService: ConfigService<TConfiguration>) {}
+  constructor(
+    private readonly configService: ConfigService<TConfiguration>,
+    private readonly evmProviderFactory: EvmProviderFactory,
+  ) {}
 
   private readonly coinContractAddress = (evmNetwork: EvmNetwork, coin: EvmCoin): string =>
     this.configService.get(`evmNetworks.${evmNetwork}.coinContractAddress.${coin}`, { infer: true })!
 
-  private readonly provider = (evmNetwork: EvmNetwork): ethers.JsonRpcProvider =>
-    new ethers.JsonRpcProvider(this.configService.get(`evmNetworks.${evmNetwork}.rpcUrl`, { infer: true }))
+  /** Cached, with failover/quorum when several RPC endpoints are configured. */
+  private readonly provider = (evmNetwork: EvmNetwork): ethers.Provider => this.evmProviderFactory.get(evmNetwork)
 
   // /**
   //  * Get the ETH balance for a given address

@@ -3,6 +3,7 @@ import { TConfiguration } from '@/infrastructure/config/configuration'
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { ethers } from 'ethers'
+import { EvmProviderFactory } from './evmProvider.factory'
 
 type SendETHParams = {
   toAddress: string
@@ -41,15 +42,18 @@ type SendERC20TokenParams = {
 export class EthTransactionService {
   private readonly logger = new Logger(EthTransactionService.name)
 
-  constructor(private readonly configService: ConfigService<TConfiguration>) {}
+  constructor(
+    private readonly configService: ConfigService<TConfiguration>,
+    private readonly evmProviderFactory: EvmProviderFactory,
+  ) {}
 
   private readonly USDT_ABI = ['function balanceOf(address owner) view returns (uint256)', 'function transfer(address to, uint256 amount) returns (bool)']
 
   private readonly coinContractAddress = (evmNetwork: EvmNetwork, coin: EvmCoin): string =>
     this.configService.get(`evmNetworks.${evmNetwork}.coinContractAddress.${coin}`, { infer: true })!
 
-  private readonly provider = (evmNetwork: EvmNetwork): ethers.JsonRpcProvider =>
-    new ethers.JsonRpcProvider(this.configService.get(`evmNetworks.${evmNetwork}.rpcUrl`, { infer: true }))
+  /** Cached, with failover/quorum when several RPC endpoints are configured. */
+  private readonly provider = (evmNetwork: EvmNetwork): ethers.Provider => this.evmProviderFactory.get(evmNetwork)
 
   /**
    * Sends ETH to a specified address
