@@ -24,51 +24,32 @@ export class EthInfoService {
   /** Cached, with failover/quorum when several RPC endpoints are configured. */
   private readonly provider = (evmNetwork: EvmNetwork): ethers.Provider => this.evmProviderFactory.get(evmNetwork)
 
-  // /**
-  //  * Get the ETH balance for a given address
-  //  * @param address - The Ethereum address to check
-  //  * @param providerUrl - The Ethereum node provider URL
-  //  * @returns The balance in ETH as a string
-  //  */
-  // async getETHBalance(address: string, evmNetwork: EvmNetwork): Promise<string> {
-  //   try {
-  //     const provider = this.provider(evmNetwork)
-  //     const balance = await provider.getBalance(address)
-  //     return ethers.formatEther(balance)
-  //   } catch (error) {
-  //     this.logger.error(`Failed to get ETH balance for address ${address}: ${error.message}`)
-  //     throw error
-  //   }
-  // }
+  /**
+   * Native balance in wei.
+   *
+   * Used by reconciliation to detect a wallet still holding funds after a sweep was supposed
+   * to complete. Returns null on failure rather than throwing, so one unreachable RPC does not
+   * abort a whole reconciliation pass.
+   */
+  async getNativeBalance(address: string, evmNetwork: EvmNetwork): Promise<bigint | null> {
+    try {
+      return await this.provider(evmNetwork).getBalance(address)
+    } catch (error) {
+      this.logger.error(`Failed to get native balance for address ${address}: ${error.message}`)
+      return null
+    }
+  }
 
-  // /**
-  //  * Get the ERC20 token balance for a given address
-  //  * @param address - The Ethereum address to check
-  //  * @param contractAddress - The ERC20 token contract address
-  //  * @param providerUrl - The Ethereum node provider URL
-  //  * @returns The token balance as a string
-  //  */
-  // async getERC20Balance(address: string, contractAddress: string, evmNetwork: EvmNetwork): Promise<string> {
-  //   try {
-  //     const provider = this.provider(evmNetwork)
-  //     const contract = new ethers.Contract(contractAddress, this.ERC20_BALANCE_ABI, provider)
-  //     const balance = (await contract.balanceOf(address)) as bigint
-  //     return ethers.formatUnits(balance.toString(), 6) // For USDT typically 6 decimals
-  //   } catch (error) {
-  //     this.logger.error(`Failed to get ERC20 balance for address ${address}: ${error.message}`)
-  //     throw error
-  //   }
-  // }
-
-  // /**
-  //  * Get the nonce for a given address
-  //  * @param address - The Ethereum address to check
-  //  * @returns The nonce as a number
-  //  */
-  // async getNonce(address: string, evmNetwork: EvmNetwork): Promise<number> {
-  //   const provider = this.provider(evmNetwork)
-  //   return provider.getTransactionCount(address, 'latest')
-  // }
+  /** ERC20 balance in the token's base units. */
+  async getERC20Balance(address: string, contractAddress: string, evmNetwork: EvmNetwork): Promise<bigint | null> {
+    try {
+      const contract = new ethers.Contract(contractAddress, this.ERC20_BALANCE_ABI, this.provider(evmNetwork))
+      return (await contract.balanceOf(address)) as bigint
+    } catch (error) {
+      this.logger.error(`Failed to get ERC20 balance for address ${address}: ${error.message}`)
+      return null
+    }
+  }
 
   /**
    * Get the total gas cost, in wei, of a USDT transfer of `amount` base units

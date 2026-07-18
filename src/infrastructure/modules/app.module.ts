@@ -12,6 +12,7 @@ import { BtcBlockhainModule, EthBlockhainModule, TronBlockhainModule } from './b
 import { BlockchainTransactionModule } from './common'
 import { HealthModule } from './health.module'
 import { LedgerModule } from './ledger.module'
+import { ReconciliationModule } from './reconciliation.module'
 import { SplitWithdrawModule } from './splitWithdraw.module'
 import { WalletModule } from './wallet.module'
 
@@ -39,6 +40,7 @@ import { WalletModule } from './wallet.module'
     HealthModule,
     WalletModule,
     SplitWithdrawModule,
+    ReconciliationModule,
   ],
   controllers: [],
   providers: [AESCipherService, TronEnergyService, { provide: APP_GUARD, useClass: ThrottlerGuard }],

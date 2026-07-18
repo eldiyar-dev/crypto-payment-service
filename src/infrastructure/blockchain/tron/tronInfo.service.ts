@@ -14,34 +14,30 @@ export class TronInfoService {
   }
 
   /**
-   * Get the TRX balance for a given address
-   * @param address - The Tron address to check
-   * @returns The balance in TRX as a number
+   * TRX balance in SUN.
+   *
+   * Returns null rather than throwing so one unreachable node cannot abort a reconciliation
+   * pass, and exact base units so the value is comparable with ledger amounts.
    */
-  async getTRXBalance(address: string): Promise<number> {
+  async getTRXBalanceSun(address: string): Promise<bigint | null> {
     try {
       const balance = await this.tronWeb.trx.getBalance(address)
-      return balance / 1e6 // Convert SUN to TRX
+      return BigInt(Math.trunc(Number(balance)))
     } catch (error) {
       this.logger.error(`Failed to get TRX balance for address ${address}: ${error.message}`)
-      throw error
+      return null
     }
   }
 
-  /**
-   * Get the TRC20 token balance for a given address
-   * @param address - The Tron address to check
-   * @param contractAddress - The TRC20 token contract address
-   * @returns The token balance as a number
-   */
-  async getTRC20Balance(address: string, contractAddress: string): Promise<number> {
+  /** TRC20 balance in the token's base units. */
+  async getTRC20BalanceBaseUnits(address: string, contractAddress: string): Promise<bigint | null> {
     try {
       const contract = await this.tronWeb.contract().at(contractAddress)
-      const balance = await contract.balanceOf(address).call()
-      return Number(balance) / 1e6 // For USDT typically 6 decimals
+      const balance = (await contract.balanceOf(address).call()) as { toString(): string }
+      return BigInt(balance.toString())
     } catch (error) {
       this.logger.error(`Failed to get TRC20 balance for address ${address}: ${error.message}`)
-      throw error
+      return null
     }
   }
 

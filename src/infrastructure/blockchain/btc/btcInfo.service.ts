@@ -13,11 +13,12 @@ export class BtcInfoService {
     this.baseUrl = this.configService.get('btc_api_url')!
   }
 
-  async getBTCBalance(address: string): Promise<number | null> {
+  /** Confirmed balance in satoshi, exact. Null if unavailable. */
+  async getBTCBalanceSatoshi(address: string): Promise<bigint | null> {
     try {
       const url = `${this.baseUrl}/api/v2/address/${address}`
-      const { data } = await axios.get<AnkrAddress>(url)
-      return data.balance ? parseInt(data.balance, 10) / 1e8 : 0
+      const { data } = await axios.get<AnkrAddress>(url, { timeout: 10_000 })
+      return data?.balance ? BigInt(data.balance) : 0n
     } catch (error) {
       this.logger.error(`Failed to get BTC balance for address ${address}: ${(error as Error).message}`)
       return null
