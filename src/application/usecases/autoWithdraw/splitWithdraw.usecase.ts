@@ -101,8 +101,18 @@ export class SplitWithdrawUseCase {
         void this.tronEnergyService.getAccountResourceEnergy(address).then((energy) => this.logger.debug(`Remaining energy ${address} ${energy}`))
       }
 
-      // Split amount
+      // Split amount. splitAmountByPercentage throws on a percentage outside [0, 100] rather
+      // than producing a NaN or negative leg, so a bad `pie` aborts here and is reported.
       const { mainAmount, additionalAmount } = splitAmountByPercentage(amount, pie)
+
+      // Conservation invariant: the two legs must account for the deposit exactly. Cheap to
+      // check and the failure mode it guards against — value silently disappearing into an
+      // unallocated rounding residue — is invisible on-chain until reconciliation.
+      if (mainAmount + additionalAmount !== amount) {
+        this.logger.error(`Split does not conserve value for ${address}: ${mainAmount} + ${additionalAmount} !== ${amount}`)
+        void this.reportService.sendReport({ currency, address, ...this.reportAmount(amount, decimals), message: `Split does not conserve value for ${address}` })
+        return
+      }
 
       // Get source wallet's encrypted private key
       const wallet = await this.walletRepository.getWalletByAddress(address)
