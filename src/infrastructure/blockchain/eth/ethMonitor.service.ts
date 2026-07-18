@@ -4,7 +4,7 @@ import { ETH_DECIMALS, formatBaseUnits, parseBaseUnits, sleep, withRetry } from 
 import { RedisService } from '@/infrastructure/redis/redis.service'
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { ContractEventPayload, ethers } from 'ethers'
+import { ethers } from 'ethers'
 import { TConfiguration } from '../../config/configuration'
 
 type DepositCallback = (data: {
@@ -42,6 +42,11 @@ export class EthMonitorService {
 
   // ERC20 ABI for Transfer event
   private readonly ERC20_ABI = ['event Transfer(address indexed from, address indexed to, uint256 value)']
+  private readonly erc20Interface = new ethers.Interface(this.ERC20_ABI)
+  private readonly transferTopic = ethers.id('Transfer(address,address,uint256)')
+
+  /** Highest block already scanned per network, so a range is never skipped. */
+  private readonly lastScannedBlock = new Map<EvmNetwork, number>()
 
   /**
    * Exactly one live provider per network. A shared `usdtContract` field also meant that
@@ -112,9 +117,6 @@ export class EthMonitorService {
       }
 
       await this.listenEthTransfers(provider, evmNetwork)
-
-      const usdtContract = new ethers.Contract(this.getCoinContractAddress(evmNetwork, 'USDT'), this.ERC20_ABI, provider)
-      await this.listenUsdtTransfers(usdtContract, evmNetwork)
 
       // Only a fully established subscription resets the backoff.
       this.reconnectAttempts.set(evmNetwork, 0)
@@ -190,15 +192,48 @@ export class EthMonitorService {
     await Promise.all([...this.providers.keys()].map((evmNetwork) => this.teardown(evmNetwork)))
   }
 
+  /**
+   * Subscribes to new heads, but scans blocks only once they are buried under the configured
+   * confirmation depth.
+   *
+   * Previously the deposit callback fired the moment a transaction appeared in a fetched block
+   * — depth 0. Because the sweep that follows is immediate and irreversible, a deposit that was
+   * later reorganised out had already been paid out against.
+   */
   private async listenEthTransfers(provider: ethers.WebSocketProvider, evmNetwork: EvmNetwork) {
-    return provider.on('block', async (blockNumber: number) => {
+    return provider.on('block', async (head: number) => {
       try {
-        this.logger.log(`Checking block ${blockNumber} network: ${evmNetwork}`)
-        await this.checkBlockForDeposits(provider, blockNumber, evmNetwork)
+        await this.scanConfirmedBlocks(provider, head, evmNetwork)
       } catch (err) {
-        this.logger.error(`Error processing block network: ${evmNetwork} ${err instanceof Error ? err.message : String(err)}`, err)
+        this.logger.error(`Error processing block network: ${evmNetwork} ${err instanceof Error ? err.message : String(err)}`)
       }
     })
+  }
+
+  /**
+   * Scans every block that has just reached the confirmation depth.
+   *
+   * Advancing through a range rather than scanning a single block means a missed or
+   * out-of-order head notification does not silently skip a block.
+   */
+  private async scanConfirmedBlocks(provider: ethers.WebSocketProvider, head: number, evmNetwork: EvmNetwork) {
+    const confirmations = this.getConfirmations(evmNetwork)
+    const target = head - confirmations
+    if (target < 0) return
+
+    const lastScanned = this.lastScannedBlock.get(evmNetwork)
+    // On first run, start at the target rather than replaying the whole chain.
+    const from = lastScanned === undefined ? target : lastScanned + 1
+
+    for (let blockNumber = from; blockNumber <= target; blockNumber++) {
+      this.logger.log(`Checking confirmed block ${blockNumber} (head ${head}, depth ${confirmations}) network: ${evmNetwork}`)
+      await this.checkBlockForDeposits(provider, blockNumber, evmNetwork)
+      this.lastScannedBlock.set(evmNetwork, blockNumber)
+    }
+  }
+
+  private getConfirmations(evmNetwork: EvmNetwork): number {
+    return this.configService.get(`confirmations.${evmNetwork}`, { infer: true })!
   }
 
   private async checkBlockForDeposits(provider: ethers.WebSocketProvider, blockNumber: number, evmNetwork: EvmNetwork) {
@@ -210,22 +245,27 @@ export class EthMonitorService {
 
     const addresses = await this.getAddresses()
 
+    await this.checkNativeTransfers(block, blockNumber, evmNetwork, addresses)
+    await this.checkTokenTransfers(provider, block, blockNumber, evmNetwork, addresses)
+  }
+
+  private async checkNativeTransfers(block: ethers.Block, blockNumber: number, evmNetwork: EvmNetwork, addresses: string[]) {
+    const minDeposit = parseBaseUnits(this.minEthDeposit, ETH_DECIMALS)
+
     for (const tx of block.prefetchedTransactions) {
       if (await this.redisService.isFeeTransactionHash(tx.hash)) {
         this.logger.log(`Ignoring fee transaction: ${tx.hash}`)
         continue
       }
 
-      if (!tx?.to) {
-        this.logger.log(`Transaction ${tx.hash} has no to address network: ${evmNetwork}`)
-        continue
-      }
+      if (!tx?.to) continue
+
       const to = tx.to.toLowerCase()
       if (!addresses.includes(to)) continue
 
       // tx.value is already exact wei — never narrow it through a float.
       const amountWei = tx.value
-      if (amountWei < parseBaseUnits(this.minEthDeposit, ETH_DECIMALS)) continue
+      if (amountWei < minDeposit) continue
 
       this.logger.log(`Deposit detected: ${formatBaseUnits(amountWei, ETH_DECIMALS)} ETH from ${tx.from} to ${to} txHash: ${tx.hash} network: ${evmNetwork}`)
       this.depositCallback({
@@ -242,38 +282,55 @@ export class EthMonitorService {
     }
   }
 
-  private async getBlockWithRetry(provider: ethers.WebSocketProvider, blockNumber: number): Promise<ethers.Block | null> {
-    return withRetry(() => provider.getBlock(blockNumber, true))
-  }
+  /**
+   * Reads USDT Transfer events for one confirmed block via eth_getLogs.
+   *
+   * This replaces a live `contract.on('Transfer')` subscription, which fired at depth 0 and
+   * could not be confirmation-gated. Querying a settled block also means the token path and
+   * the native path share one confirmation rule and one scan checkpoint.
+   */
+  private async checkTokenTransfers(provider: ethers.WebSocketProvider, block: ethers.Block, blockNumber: number, evmNetwork: EvmNetwork, addresses: string[]) {
+    const decimals = this.getCoinDecimals(evmNetwork, 'USDT')
+    const minDeposit = parseBaseUnits(this.minUsdtDeposit, decimals)
 
-  private async listenUsdtTransfers(usdtContract: ethers.Contract, evmNetwork: EvmNetwork) {
-    return usdtContract.on('Transfer', async (from: string, to: string, value: ethers.BigNumberish, event: ContractEventPayload) => {
+    const logs = await provider.getLogs({
+      fromBlock: blockNumber,
+      toBlock: blockNumber,
+      address: this.getCoinContractAddress(evmNetwork, 'USDT'),
+      topics: [this.transferTopic],
+    })
+
+    for (const log of logs) {
       try {
-        const toLower = to.toLowerCase()
-        if (!(await this.getAddresses()).includes(toLower)) return
+        const parsed = this.erc20Interface.parseLog({ topics: [...log.topics], data: log.data })
+        if (!parsed) continue
 
-        const decimals = this.getCoinDecimals(evmNetwork, 'USDT')
-        const amountBase = ethers.toBigInt(value)
-        if (amountBase < parseBaseUnits(this.minUsdtDeposit, decimals)) return
+        const to = (parsed.args.to as string).toLowerCase()
+        if (!addresses.includes(to)) continue
 
-        const txHash = event.log.transactionHash
+        const amountBase = ethers.toBigInt(parsed.args.value as ethers.BigNumberish)
+        if (amountBase < minDeposit) continue
 
-        this.logger.log(`Deposit detected: ${formatBaseUnits(amountBase, decimals)} USDT from ${from} to ${toLower} txHash: ${txHash} network: ${evmNetwork}`)
+        this.logger.log(`Deposit detected: ${formatBaseUnits(amountBase, decimals)} USDT from ${parsed.args.from} to ${to} txHash: ${log.transactionHash} network: ${evmNetwork}`)
         this.depositCallback({
-          address: toLower,
+          address: to,
           amount: amountBase,
           decimals,
           currency: Currency.USDT,
-          txHash,
+          txHash: log.transactionHash,
           // Distinguishes multiple USDT transfers to the same address within one transaction.
-          outputIndex: event.log.index,
-          blockHash: event.log.blockHash,
-          blockNumber: BigInt(event.log.blockNumber),
+          outputIndex: log.index,
+          blockHash: block.hash,
+          blockNumber: BigInt(blockNumber),
           evmNetwork,
         })
       } catch (err) {
         this.logger.error(`Error processing USDT transfer network: ${evmNetwork} ${err instanceof Error ? err.message : String(err)}`)
       }
-    })
+    }
+  }
+
+  private async getBlockWithRetry(provider: ethers.WebSocketProvider, blockNumber: number): Promise<ethers.Block | null> {
+    return withRetry(() => provider.getBlock(blockNumber, true))
   }
 }

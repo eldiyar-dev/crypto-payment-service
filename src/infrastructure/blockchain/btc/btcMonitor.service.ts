@@ -1,8 +1,10 @@
 import { Chain } from '@/common/enums'
 import { AnkrTransaction } from '@/common/interfaces'
 import { BTC_DECIMALS, formatBaseUnits, parseBaseUnits } from '@/common/utils'
+import { TConfiguration } from '@/infrastructure/config/configuration'
 import { RedisService } from '@/infrastructure/redis/redis.service'
 import { Injectable, Logger } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
 import { BtcInfoService } from './btcInfo.service'
 
 type DepositCallback = (data: {
@@ -21,11 +23,16 @@ export class BtcMonitorService {
   constructor(
     private readonly redisService: RedisService,
     private readonly btcInfoService: BtcInfoService,
+    private readonly configService: ConfigService<TConfiguration>,
   ) {}
 
   private depositCallback: DepositCallback
 
-  private readonly confirmationsThreshold = 2
+  /** Config-driven so the depth can be raised without a redeploy. */
+  private get confirmationsThreshold(): number {
+    return this.configService.get(`confirmations.${Chain.BTC}`, { infer: true })!
+  }
+
   /** Dust threshold: 0.00005 BTC (~$5), in satoshi. */
   private readonly minBtcDeposit = parseBaseUnits('0.00005', BTC_DECIMALS)
   private lastProcessedBlock: number

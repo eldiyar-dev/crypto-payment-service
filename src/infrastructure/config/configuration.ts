@@ -1,3 +1,4 @@
+import { Chain } from '@/common/enums'
 import { EvmCoin, EvmNetwork } from '@/common/interfaces'
 import { Deposit } from '@/domain/entities/deposit.entity'
 import { Wallet } from '@/domain/entities/wallet.entity'
@@ -6,8 +7,30 @@ import type { ThrottlerModuleOptions } from '@nestjs/throttler'
 import type { TypeOrmModuleOptions } from '@nestjs/typeorm/dist'
 import type { RedisOptions } from 'ioredis'
 
+const envInt = (name: string, fallback: number): number => parseInt(process.env[name] ?? '', 10) || fallback
+
 export default () =>
   <TConfiguration>{
+    /**
+     * Block depth required before a deposit is acted on, per chain.
+     *
+     * The sweep is immediate and irreversible, so acting on a deposit that can still be
+     * reorganised out means paying out against a deposit that no longer exists. ETH/EVM
+     * previously fired at depth 0 and TRON's threshold of 1 was always satisfied by
+     * construction, so both were effectively ungated.
+     */
+    confirmations: {
+      [Chain.TRON]: envInt('TRON_CONFIRMATIONS', 19), // TRON irreversibility is ~19 blocks
+      [Chain.BTC]: envInt('BTC_CONFIRMATIONS', 2),
+      [Chain.ETH]: envInt('ETH_CONFIRMATIONS', 12),
+      [Chain.EVM_BASE]: envInt('BASE_CONFIRMATIONS', 12),
+      [Chain.EVM_BSC]: envInt('BSC_CONFIRMATIONS', 15),
+      [Chain.EVM_POLYGON]: envInt('POLYGON_CONFIRMATIONS', 30),
+      [Chain.EVM_ARBITRUM]: envInt('ARBITRUM_CONFIRMATIONS', 20),
+      [Chain.EVM_OPTIMISM]: envInt('OPTIMISM_CONFIRMATIONS', 20),
+      [Chain.EVM_AVALANCHE_C]: envInt('AVALANCHE_C_CONFIRMATIONS', 15),
+      [Chain.EVM_FANTOM]: envInt('FANTOM_CONFIRMATIONS', 15),
+    },
     port: parseInt(process.env.PORT ?? '', 10) || 3000,
     backHostUrl: process.env.BACK_HOST_URL,
     swaggerPass: process.env.SWAGGER_PASS,
@@ -140,6 +163,7 @@ export default () =>
   }
 
 export type TConfiguration = {
+  confirmations: Record<Chain, number>
   port: number
   /**
    * @example https://example.com

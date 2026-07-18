@@ -37,7 +37,16 @@ export class TronMonitorService {
   private tronWeb: TronWeb
   private lastCheckedBlock = 0
   private readonly pollInterval = 3_000 // 3 seconds
-  private readonly confirmationThreshold = 1 // 1 confirmations
+
+  /**
+   * Block depth required before a deposit is acted on.
+   *
+   * The old check — `currentBlockNumber - blockNum + 1 >= 1` — was always true for any block
+   * that had been polled, so it gated nothing and TRON was effectively running at depth 0.
+   */
+  private get confirmationThreshold(): number {
+    return this.configService.get(`confirmations.${Chain.TRON}`, { infer: true })!
+  }
   /** Dust thresholds, held as decimal strings and converted to base units at comparison time. */
   private readonly minTrxDeposit = '1' // 1 TRX
   private readonly minUsdtDeposit = '0.5' // 0.5 USDT
@@ -92,9 +101,14 @@ export class TronMonitorService {
       const addresses = await this.getAddresses()
 
       const currentBlockNumber = currentBlock.block_header.raw_data.number
-      if (this.lastCheckedBlock >= currentBlockNumber) return
 
-      for (let blockNum = this.lastCheckedBlock + 1; blockNum <= currentBlockNumber; blockNum++) {
+      // Only scan blocks already buried under the confirmation depth. Gating here rather than
+      // per-transaction means the depth is actually enforced, and blocks shallower than the
+      // threshold are simply left for a later poll.
+      const highestConfirmedBlock = currentBlockNumber - this.confirmationThreshold + 1
+      if (this.lastCheckedBlock >= highestConfirmedBlock) return
+
+      for (let blockNum = this.lastCheckedBlock + 1; blockNum <= highestConfirmedBlock; blockNum++) {
         const block = await this.getBlockWithRetry(blockNum)
         if (!block?.transactions) {
           this.logger.error(`Block ${blockNum} transactions not found`)
@@ -108,10 +122,6 @@ export class TronMonitorService {
               this.logger.error(`Block ${blockNum} transaction ${tx.txID} has no contract`)
               continue
             }
-
-            // Calculate the number of confirmations
-            const confirmations = currentBlockNumber - blockNum + 1
-            if (confirmations < this.confirmationThreshold) continue
 
             const contract = tx.raw_data.contract[0]
 
