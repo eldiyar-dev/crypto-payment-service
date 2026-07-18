@@ -44,6 +44,17 @@ export class RedisService {
     await this.redisRepository.setArray(`${chain}:address`, Array.isArray(address) ? address : [address])
   }
 
+  /**
+   * Removes an address from the monitored set.
+   *
+   * Nothing removed addresses on wallet deletion, so a soft-deleted wallet kept detecting
+   * deposits that could never be swept — invisibly, because the sweep's only failure branch
+   * for a missing wallet returned without reporting.
+   */
+  async removeAddress(chain: Chain, address: string) {
+    await this.redisRepository.srem(`${chain}:address`, address)
+  }
+
   /** Number of addresses cached for a chain, for reconciliation against the durable store. */
   async countAddresses(chain: Chain): Promise<number> {
     return this.redisRepository.scard(`${chain}:address`)

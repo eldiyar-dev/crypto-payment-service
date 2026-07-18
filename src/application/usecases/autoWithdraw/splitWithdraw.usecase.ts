@@ -164,7 +164,18 @@ export class SplitWithdrawUseCase {
       // Get source wallet's encrypted private key
       const wallet = await this.walletRepository.getWalletByAddress(address)
       if (!wallet) {
+        // The only failure branch in this file that used to return without notifying anyone.
+        // Reachable in normal operation: Wallet has a deleted_at soft-delete column and
+        // TypeORM's findOne excludes soft-deleted rows, so a deleted wallet kept detecting
+        // deposits that could never be swept — silently.
         this.logger.error(`Source wallet not found for ${address} ${ref}`)
+        void this.reportService.sendReport({ currency, address, ...this.reportAmount(amount, decimals), message: `Source wallet not found for ${address}` })
+
+        // Stop advertising an address whose key we cannot load, so it stops generating
+        // deposits that can only fail.
+        await this.redisService.removeAddress(chain, address)
+        this.logger.warn(`Removed ${address} from the ${chain} monitored set: no wallet record`)
+
         return { success: false, reason: 'Source wallet not found' }
       }
 
@@ -225,7 +236,11 @@ export class SplitWithdrawUseCase {
 
       return { success: true }
     } catch (error) {
-      this.logger.error(`Withdraw failed for ${address} ${ref}: ${error.message}`, error)
+      // The catch-all had the same gap: it logged and returned without notifying the client
+      // API, so an unexpected exception left no trace anywhere outside this process's logs.
+      this.logger.error(`Withdraw failed for ${address} ${ref}: ${(error as Error).message}`)
+      void this.reportService.sendReport({ currency, address, ...this.reportAmount(amount, decimals), message: `Withdraw failed for ${address}: ${(error as Error).message}` })
+
       return { success: false, reason: `Withdraw threw: ${(error as Error).message}` }
     }
   }
