@@ -29,12 +29,13 @@ export class TronTransactionService {
   }
 
   /**
-   * TRX fee in SUN
-   */
-  private readonly TRX_FEE_SUN = 500_000n
-
-  /**
-   * Send TRX to an address, net of the 0.5 TRX fee reserve
+   * Send exactly `amount` SUN to an address.
+   *
+   * This used to subtract a hardcoded 0.5 TRX from every send, which silently shorted every
+   * customer TRX withdrawal by 0.5 TRX and drove the smaller split leg negative for small
+   * deposits. Fee reserves are the caller's concern — see
+   * `SplitWithdrawUseCase.sendTrxForFeeOrActiveAccount`.
+   *
    * @param toAddress - The address to send the TRX to
    * @param amount - The amount of TRX to send, in SUN
    * @param privateKey - The private key of the account to send the TRX from
@@ -47,8 +48,12 @@ export class TronTransactionService {
       // Set the default address for this transaction
       tronWeb.setPrivateKey(privateKey)
 
-      // Already in SUN — exact integer arithmetic, no BigNumber float round-trip.
-      const amountInSun = amount - this.TRX_FEE_SUN
+      // Already in SUN — exact integer arithmetic, sent as requested.
+      const amountInSun = amount
+      if (amountInSun <= 0n) {
+        this.logger.error(`Refusing to send a non-positive TRX amount to ${toAddress}: ${amountInSun} SUN`)
+        return null
+      }
 
       // Create transaction
       const transaction = await tronWeb.transactionBuilder.sendTrx(toAddress, Number(amountInSun))

@@ -81,16 +81,16 @@ export class BtcTransactionService {
         return null
       }
 
-      let sendAmount = amountSatoshi
+      // Fail rather than substitute. "Sending max possible" returned a transaction hash that
+      // the caller reported as a completed withdrawal, for an amount nobody requested.
       if (totalInput < amountSatoshi + fee) {
-        // Not enough for requested amount, but enough for fee
-        sendAmount = totalInput - fee
-        if (sendAmount <= 0n) {
-          this.logger.error(`Insufficient funds for fromAddress: ${fromAddress} (not enough for fee)`)
-          return null
-        }
-        this.logger.warn(`Not enough funds for requested amount, sending max possible: ${formatBaseUnits(sendAmount, BTC_DECIMALS)} BTC`)
+        this.logger.error(
+          `Insufficient funds for fromAddress: ${fromAddress}: have ${formatBaseUnits(totalInput, BTC_DECIMALS)} BTC, need ${formatBaseUnits(amountSatoshi + fee, BTC_DECIMALS)} BTC (amount + fee)`,
+        )
+        return null
       }
+
+      const sendAmount = amountSatoshi
 
       psbt.addOutput({ address: toAddress, value: Number(sendAmount) })
 

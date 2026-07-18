@@ -36,8 +36,6 @@ type TWithdrawAccountParams = {
   nonce?: number
 }
 
-/** TronTransactionService.sendTRX deducts this reserve from every send. */
-const TRON_FEE_RESERVE_SUN = 500_000n
 /** Up to 0.01 TRX of dust, so repeated fee transfers are distinguishable on-chain. */
 const TRON_FEE_DUST_SUN = 10_000n
 /** Ceiling used when gas estimation fails, in wei (0.0007 ETH). */
@@ -267,9 +265,8 @@ export class SplitWithdrawUseCase {
    * @returns txHash if the TRX was sent successfully, false otherwise
    */
   private async sendTrxForFeeOrActiveAccount(toAddress: string, privateKey: string, amount = '0.1', type: 'fee' | 'active' = 'fee') {
-    // TronTransactionService.sendTRX deducts a 0.5 TRX fee reserve from what it is given, so the
-    // reserve is added back here to make the amount the recipient is credited match `amount`.
-    const amountSun = parseBaseUnits(amount, TRX_DECIMALS) + TRON_FEE_RESERVE_SUN
+    // sendTRX now transfers exactly what it is given, so the recipient is credited `amount`.
+    const amountSun = parseBaseUnits(amount, TRX_DECIMALS)
 
     const txHash = await this.blockchainTransactionService.sendFunds({
       currency: Currency.TRX,

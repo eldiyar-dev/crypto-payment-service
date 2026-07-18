@@ -68,7 +68,7 @@ export class EthTransactionService {
       const fromAddress = wallet.address
 
       // Already in wei — no float conversion on the money path.
-      let amountWei = amount
+      const amountWei = amount
 
       // get current gas parameters
       const feeData = await provider.getFeeData()
@@ -85,8 +85,16 @@ export class EthTransactionService {
       // get ETH balance
       const balance = await provider.getBalance(fromAddress)
 
-      // check if there are enough funds for transfer and gas (with buffer)
-      if (balance < amountWei + totalGasWithBuffer) amountWei = balance - totalGasWithBuffer
+      // Fail rather than substitute. The caller treats any returned hash as success, so
+      // reducing the amount here reported a completed withdrawal for a figure nobody asked
+      // for — and went negative outright when balance < totalGasWithBuffer. Returning null
+      // instead lets the caller run its gas top-up and retry, which is the intended recovery.
+      if (balance < amountWei + totalGasWithBuffer) {
+        this.logger.error(
+          `Insufficient balance for ${fromAddress} network: ${evmNetwork}: have ${ethers.formatEther(balance)}, need ${ethers.formatEther(amountWei + totalGasWithBuffer)} (amount + gas with 25% buffer)`,
+        )
+        return null
+      }
 
       this.logger.log(`Sending ${ethers.formatEther(amountWei)} ETH to ${toAddress} network: ${evmNetwork}`)
       this.logger.log(`Fee (with 25% buffer): ${ethers.formatEther(totalGasWithBuffer)} network: ${evmNetwork}`)
