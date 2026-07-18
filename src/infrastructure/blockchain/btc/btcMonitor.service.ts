@@ -1,6 +1,7 @@
 import { Chain } from '@/common/enums'
 import { AnkrTransaction } from '@/common/interfaces'
 import { BTC_DECIMALS, formatBaseUnits, parseBaseUnits } from '@/common/utils'
+import { ChainCheckpointRepository } from '@/domain/repositories/chainCheckpointRepository'
 import { TConfiguration } from '@/infrastructure/config/configuration'
 import { RedisService } from '@/infrastructure/redis/redis.service'
 import { Injectable, Logger } from '@nestjs/common'
@@ -24,6 +25,7 @@ export class BtcMonitorService {
     private readonly redisService: RedisService,
     private readonly btcInfoService: BtcInfoService,
     private readonly configService: ConfigService<TConfiguration>,
+    private readonly chainCheckpointRepository: ChainCheckpointRepository,
   ) {}
 
   private depositCallback: DepositCallback
@@ -47,7 +49,9 @@ export class BtcMonitorService {
   }
 
   async start() {
-    this.lastProcessedBlock = (await this.redisService.get<number>('last-processed-block-btc')) ?? 0
+    // Moved off Redis: `allkeys-lru` could evict this key, silently resetting the scanner to
+    // the chain tip and skipping every deposit in between.
+    this.lastProcessedBlock = (await this.chainCheckpointRepository.getLastScannedBlock(Chain.BTC)) ?? 0
     setInterval(() => this.pollForNewBlocks(), this.POLLING_INTERVAL) // Poll every minute
     void this.pollForNewBlocks()
   }
@@ -62,7 +66,7 @@ export class BtcMonitorService {
       if (!this.lastProcessedBlock) {
         this.logger.log(`Initializing last processed block to ${latestBlockHeight}`)
         this.lastProcessedBlock = latestBlockHeight
-        await this.redisService.set('last-processed-block-btc', latestBlockHeight)
+        await this.chainCheckpointRepository.setLastScannedBlock(Chain.BTC, latestBlockHeight)
         return
       }
 
@@ -70,7 +74,7 @@ export class BtcMonitorService {
         this.logger.log(`New blocks detected. From ${this.lastProcessedBlock + 1} to ${latestBlockHeight}`)
         for (let height = this.lastProcessedBlock + 1; height <= latestBlockHeight; height++) {
           await this.processBlock(height)
-          await this.redisService.set('last-processed-block-btc', height)
+          await this.chainCheckpointRepository.setLastScannedBlock(Chain.BTC, height)
           this.lastProcessedBlock = height
         }
       }

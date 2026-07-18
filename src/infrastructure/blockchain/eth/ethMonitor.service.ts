@@ -1,6 +1,7 @@
 import { Chain, Currency } from '@/common/enums'
 import { EvmCoin, EvmNetwork } from '@/common/interfaces'
 import { ETH_DECIMALS, formatBaseUnits, parseBaseUnits, sleep, withRetry } from '@/common/utils'
+import { ChainCheckpointRepository } from '@/domain/repositories/chainCheckpointRepository'
 import { RedisService } from '@/infrastructure/redis/redis.service'
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
@@ -27,6 +28,7 @@ export class EthMonitorService {
   constructor(
     private readonly configService: ConfigService<TConfiguration>,
     private readonly redisService: RedisService,
+    private readonly chainCheckpointRepository: ChainCheckpointRepository,
   ) {}
 
   /** Dust thresholds, held as decimal strings and converted to base units per network. */
@@ -221,14 +223,23 @@ export class EthMonitorService {
     const target = head - confirmations
     if (target < 0) return
 
-    const lastScanned = this.lastScannedBlock.get(evmNetwork)
-    // On first run, start at the target rather than replaying the whole chain.
-    const from = lastScanned === undefined ? target : lastScanned + 1
+    // Resume from the durable checkpoint so downtime is a gap that gets scanned, not lost.
+    // Only on a chain that has never been scanned do we start at the tip.
+    let lastScanned = this.lastScannedBlock.get(evmNetwork)
+    if (lastScanned === undefined) {
+      lastScanned = (await this.chainCheckpointRepository.getLastScannedBlock(evmNetwork)) ?? target - 1
+      this.logger.log(`Resuming ${evmNetwork} scan from block ${lastScanned + 1}`)
+    }
 
-    for (let blockNumber = from; blockNumber <= target; blockNumber++) {
+    for (let blockNumber = lastScanned + 1; blockNumber <= target; blockNumber++) {
       this.logger.log(`Checking confirmed block ${blockNumber} (head ${head}, depth ${confirmations}) network: ${evmNetwork}`)
       await this.checkBlockForDeposits(provider, blockNumber, evmNetwork)
+
+      // Advance the checkpoint only after the block is fully processed, so a crash mid-block
+      // re-scans it rather than skipping it. Re-scanning is safe: the deposit ledger's unique
+      // key makes re-delivery a no-op.
       this.lastScannedBlock.set(evmNetwork, blockNumber)
+      await this.chainCheckpointRepository.setLastScannedBlock(evmNetwork, blockNumber)
     }
   }
 

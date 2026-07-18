@@ -1,5 +1,6 @@
 import { Chain, Currency } from '@/common/enums'
 import { formatBaseUnits, parseBaseUnits, TRON_USDT_DECIMALS, TRX_DECIMALS, withRetry } from '@/common/utils'
+import { ChainCheckpointRepository } from '@/domain/repositories/chainCheckpointRepository'
 import { RedisService } from '@/infrastructure/redis/redis.service'
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
@@ -26,6 +27,7 @@ export class TronMonitorService {
   constructor(
     private readonly configService: ConfigService<TConfiguration>,
     private readonly redisService: RedisService,
+    private readonly chainCheckpointRepository: ChainCheckpointRepository,
   ) {}
 
   private get usdtContractAddress(): string {
@@ -65,9 +67,17 @@ export class TronMonitorService {
     try {
       this.tronWeb = new TronWeb({ fullHost: this.configService.get('tron_host_url')! })
 
-      // Get the latest block number at start
-      const block = await this.tronWeb.trx.getCurrentBlock()
-      this.lastCheckedBlock = block.block_header.raw_data.number
+      // Resume from the durable checkpoint. Resetting to the current block on every boot — as
+      // this did — skipped every deposit that arrived during downtime, permanently.
+      const checkpoint = await this.chainCheckpointRepository.getLastScannedBlock(Chain.TRON)
+      if (checkpoint !== null) {
+        this.lastCheckedBlock = checkpoint
+        this.logger.log(`Resuming TRON scan from block ${checkpoint + 1}`)
+      } else {
+        const block = await this.tronWeb.trx.getCurrentBlock()
+        this.lastCheckedBlock = block.block_header.raw_data.number
+        this.logger.log(`No TRON checkpoint found; starting at current block ${this.lastCheckedBlock}`)
+      }
 
       this.stop()
 
@@ -216,7 +226,10 @@ export class TronMonitorService {
             this.logger.error(`Error processing transaction ${tx.txID}: ${error instanceof Error ? error.message : String(error)}`)
           }
         }
+        // Persist only after the block is fully processed: a crash mid-block re-scans it,
+        // which the deposit ledger's unique key makes harmless.
         this.lastCheckedBlock = blockNum
+        await this.chainCheckpointRepository.setLastScannedBlock(Chain.TRON, blockNum)
       }
     } catch (err: unknown) {
       this.logger.error('Error polling Tron deposits', err)

@@ -1,5 +1,6 @@
 import { Chain } from '@/common/enums'
 import { EvmCoin, EvmNetwork } from '@/common/interfaces'
+import { ChainCheckpoint } from '@/domain/entities/chainCheckpoint.entity'
 import { Deposit } from '@/domain/entities/deposit.entity'
 import { Wallet } from '@/domain/entities/wallet.entity'
 import { RedactingTypeOrmLogger } from '@/infrastructure/database/redacting-typeorm.logger'
@@ -41,7 +42,7 @@ export default () =>
       port: parseInt(process.env.POSTGRES_PORT ?? '', 10) || 5432,
       database: process.env.POSTGRES_DATABASE,
       type: 'postgres',
-      entities: [Wallet, Deposit],
+      entities: [Wallet, Deposit, ChainCheckpoint],
       synchronize: true,
       // `logging: true` logged every statement with its bound parameters, writing plaintext
       // Wallet.privateKey values into logs/*.log on each INSERT. Statement-level logging is now

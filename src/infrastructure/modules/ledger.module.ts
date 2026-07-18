@@ -1,4 +1,6 @@
+import { ChainCheckpoint } from '@/domain/entities/chainCheckpoint.entity'
 import { Deposit } from '@/domain/entities/deposit.entity'
+import { ChainCheckpointRepository } from '@/domain/repositories/chainCheckpointRepository'
 import { DepositRepository } from '@/domain/repositories/depositRepository'
 import { Global, Module } from '@nestjs/common'
 import { TypeOrmModule } from '@nestjs/typeorm'
@@ -9,8 +11,8 @@ import { TypeOrmModule } from '@nestjs/typeorm'
  */
 @Global()
 @Module({
-  imports: [TypeOrmModule.forFeature([Deposit])],
-  providers: [DepositRepository],
-  exports: [DepositRepository],
+  imports: [TypeOrmModule.forFeature([Deposit, ChainCheckpoint])],
+  providers: [DepositRepository, ChainCheckpointRepository],
+  exports: [DepositRepository, ChainCheckpointRepository],
 })
 export class LedgerModule {}
