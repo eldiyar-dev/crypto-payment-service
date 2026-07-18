@@ -10,7 +10,8 @@ import { TronTransactionService } from '../tron/tronTransaction.service'
 type TSendFunds = {
   currency: Currency
   toAddress: string
-  amount: number
+  /** Amount in the currency's base units (wei / satoshi / SUN / token base units). Exact. */
+  amount: bigint
   privateKey: string
   chain: Chain
   nonce?: number
@@ -33,6 +34,14 @@ export class BlockchainTransactionService {
     return this.configService.get(`evmNetworks.${evmNetwork}.coinContractAddress.${coin}`, { infer: true })!
   }
 
+  /**
+   * Token decimals differ per network — USDT is 6 decimals on Ethereum but 18 on BSC — so they
+   * are read from config rather than hardcoded.
+   */
+  private evmCoinDecimals(evmNetwork: EvmNetwork, coin: EvmCoin) {
+    return this.configService.get(`evmNetworks.${evmNetwork}.coinDecimals.${coin}`, { infer: true })!
+  }
+
   sendFunds({ currency, toAddress, amount, privateKey, chain, nonce }: TSendFunds) {
     switch (chain) {
       case Chain.BTC:
@@ -51,7 +60,7 @@ export class BlockchainTransactionService {
             amount,
             privateKey,
             contractAddress: this.evmCoinContractAddress(chain, 'USDT'),
-            decimals: 6,
+            decimals: this.evmCoinDecimals(chain, 'USDT'),
             nonce,
             evmNetwork: chain,
             coin: 'USDT',

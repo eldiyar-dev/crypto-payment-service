@@ -1,4 +1,5 @@
 import { Chain, Currency } from '@/common/enums'
+import { formatBaseUnits } from '@/common/utils'
 import { Wallet } from '@/domain/entities/wallet.entity'
 import { WalletRepository } from '@/domain/repositories/walletRepository'
 import { BtcMonitorService } from '@/infrastructure/blockchain/btc/btcMonitor.service'
@@ -35,10 +36,10 @@ export class BtcMonitorUseCase implements OnModuleInit {
   execute(): void {
     this.logger.log('Starting BTC monitoring...')
 
-    this.btcMonitorService.onDeposit(({ address, amount, txHash }) => {
-      this.logger.log(`New BTC deposit: ${address} ${amount}`)
-      void this.depositService.notifyNewDeposit({ currency: Currency.BTC, address, amount, txHash, chain: Chain.BTC })
-      void this.splitWithdrawUseCase.execute({ currency: Currency.BTC, address, amount, chain: Chain.BTC })
+    this.btcMonitorService.onDeposit(({ address, amount, decimals, txHash }) => {
+      this.logger.log(`New BTC deposit: ${address} ${formatBaseUnits(amount, decimals)}`)
+      void this.depositService.notifyNewDeposit({ currency: Currency.BTC, address, amount, decimals, txHash, chain: Chain.BTC })
+      void this.splitWithdrawUseCase.execute({ currency: Currency.BTC, address, amount, decimals, chain: Chain.BTC })
     })
   }
 }

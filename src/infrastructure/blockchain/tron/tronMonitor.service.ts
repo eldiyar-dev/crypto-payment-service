@@ -1,5 +1,5 @@
 import { Chain, Currency } from '@/common/enums'
-import { withRetry } from '@/common/utils'
+import { formatBaseUnits, parseBaseUnits, TRON_USDT_DECIMALS, TRX_DECIMALS, withRetry } from '@/common/utils'
 import { RedisService } from '@/infrastructure/redis/redis.service'
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
@@ -7,7 +7,7 @@ import { TronWeb } from 'tronweb'
 import { Block } from 'tronweb/lib/esm/types/APIResponse'
 import type { TConfiguration } from '../../config/configuration'
 
-type DepositCallback = (data: { address: string; amount: number; currency: Currency; txHash: string }) => Promise<void>
+type DepositCallback = (data: { address: string; amount: bigint; decimals: number; currency: Currency; txHash: string }) => Promise<void>
 
 @Injectable()
 export class TronMonitorService {
@@ -28,8 +28,9 @@ export class TronMonitorService {
   private lastCheckedBlock = 0
   private readonly pollInterval = 3_000 // 3 seconds
   private readonly confirmationThreshold = 1 // 1 confirmations
-  private readonly minTrxDeposit = 1 // 1 TRX
-  private readonly minUsdtDeposit = 0.5 // 0.5 USDT
+  /** Dust thresholds, held as decimal strings and converted to base units at comparison time. */
+  private readonly minTrxDeposit = '1' // 1 TRX
+  private readonly minUsdtDeposit = '0.5' // 0.5 USDT
   private isPolling = false
   private intervalId: NodeJS.Timeout | null = null
 
@@ -111,15 +112,18 @@ export class TronMonitorService {
 
               const toAddress = this.tronWeb.address.fromHex(to_address)
 
-              const trxAmount = Number(amount) / 1e6
+              // `amount` arrives from tronweb already parsed as a JSON number, so anything above
+              // 2^53 SUN has lost precision upstream; converting to bigint here at least stops
+              // the loss from compounding through the split and the send.
+              const trxAmountSun = BigInt(Math.trunc(Number(amount)))
 
               if (!addresses.includes(toAddress)) continue
 
-              if (trxAmount < this.minTrxDeposit) continue
+              if (trxAmountSun < parseBaseUnits(this.minTrxDeposit, TRX_DECIMALS)) continue
 
-              this.logger.log(`Deposit detected: ${trxAmount} TRX to ${toAddress} txHash: ${tx.txID}`)
+              this.logger.log(`Deposit detected: ${formatBaseUnits(trxAmountSun, TRX_DECIMALS)} TRX to ${toAddress} txHash: ${tx.txID}`)
 
-              void this.depositCallback({ address: toAddress, amount: trxAmount, currency: Currency.TRX, txHash: tx.txID })
+              void this.depositCallback({ address: toAddress, amount: trxAmountSun, decimals: TRX_DECIMALS, currency: Currency.TRX, txHash: tx.txID })
 
               continue
             }
@@ -153,22 +157,22 @@ export class TronMonitorService {
                 continue
               }
 
-              const amountBigInt = BigInt('0x' + amountHex)
-              const usdtAmount = Number(amountBigInt) / 1e6
+              // Exact from the calldata word — BigInt -> Number was lossy above 2^53.
+              const usdtAmountBase = BigInt('0x' + amountHex)
 
               // Check if the amount is valid
-              if (isNaN(usdtAmount) || usdtAmount <= 0) {
-                this.logger.warn(`Invalid USDT amount for transaction ${tx.txID}: ${usdtAmount}`)
+              if (usdtAmountBase <= 0n) {
+                this.logger.warn(`Invalid USDT amount for transaction ${tx.txID}: ${usdtAmountBase}`)
                 continue
               }
 
               if (!addresses.includes(toAddress)) continue
 
-              if (usdtAmount < this.minUsdtDeposit) continue
+              if (usdtAmountBase < parseBaseUnits(this.minUsdtDeposit, TRON_USDT_DECIMALS)) continue
 
-              this.logger.log(`Deposit detected: ${usdtAmount} USDT to ${toAddress} txHash: ${tx.txID}`)
+              this.logger.log(`Deposit detected: ${formatBaseUnits(usdtAmountBase, TRON_USDT_DECIMALS)} USDT to ${toAddress} txHash: ${tx.txID}`)
 
-              void this.depositCallback({ address: toAddress, amount: usdtAmount, currency: Currency.USDT, txHash: tx.txID })
+              void this.depositCallback({ address: toAddress, amount: usdtAmountBase, decimals: TRON_USDT_DECIMALS, currency: Currency.USDT, txHash: tx.txID })
             }
           } catch (error) {
             this.logger.error(`Error processing transaction ${tx.txID}: ${error instanceof Error ? error.message : String(error)}`)

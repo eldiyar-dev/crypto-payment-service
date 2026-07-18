@@ -1,13 +1,13 @@
 import { Chain, Currency } from '@/common/enums'
 import { EvmCoin, EvmNetwork } from '@/common/interfaces'
-import { withRetry } from '@/common/utils'
+import { ETH_DECIMALS, formatBaseUnits, parseBaseUnits, withRetry } from '@/common/utils'
 import { RedisService } from '@/infrastructure/redis/redis.service'
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { ContractEventPayload, ethers } from 'ethers'
 import { TConfiguration } from '../../config/configuration'
 
-type DepositCallback = (data: { address: string; amount: number; currency: Currency; txHash: string; evmNetwork: EvmNetwork }) => void
+type DepositCallback = (data: { address: string; amount: bigint; decimals: number; currency: Currency; txHash: string; evmNetwork: EvmNetwork }) => void
 
 @Injectable()
 export class EthMonitorService {
@@ -18,8 +18,9 @@ export class EthMonitorService {
     private readonly redisService: RedisService,
   ) {}
 
-  private readonly minEthDeposit = 0.001 // 0.001 ETH
-  private readonly minUsdtDeposit = 0.5 // 0.5 USDT
+  /** Dust thresholds, held as decimal strings and converted to base units per network. */
+  private readonly minEthDeposit = '0.001' // 0.001 ETH
+  private readonly minUsdtDeposit = '0.5' // 0.5 USDT
 
   private depositCallback: DepositCallback
 
@@ -43,6 +44,11 @@ export class EthMonitorService {
 
   private getCoinContractAddress(evmNetwork: EvmNetwork, coin: EvmCoin) {
     return this.configService.get(`evmNetworks.${evmNetwork}.coinContractAddress.${coin}`, { infer: true })!
+  }
+
+  /** USDT is 6 decimals on Ethereum but 18 on BSC, so decimals are per-network. */
+  private getCoinDecimals(evmNetwork: EvmNetwork, coin: EvmCoin) {
+    return this.configService.get(`evmNetworks.${evmNetwork}.coinDecimals.${coin}`, { infer: true })!
   }
 
   async start(evmNetwork: EvmNetwork) {
@@ -106,11 +112,12 @@ export class EthMonitorService {
       const to = tx.to.toLowerCase()
       if (!addresses.includes(to)) continue
 
-      const amountEth = Number(ethers.formatEther(tx.value))
-      if (amountEth < this.minEthDeposit) continue
+      // tx.value is already exact wei — never narrow it through a float.
+      const amountWei = tx.value
+      if (amountWei < parseBaseUnits(this.minEthDeposit, ETH_DECIMALS)) continue
 
-      this.logger.log(`Deposit detected: ${amountEth} ETH from ${tx.from} to ${to} txHash: ${tx.hash} network: ${evmNetwork}`)
-      this.depositCallback({ address: to, amount: amountEth, currency: Currency.ETH, txHash: tx.hash, evmNetwork })
+      this.logger.log(`Deposit detected: ${formatBaseUnits(amountWei, ETH_DECIMALS)} ETH from ${tx.from} to ${to} txHash: ${tx.hash} network: ${evmNetwork}`)
+      this.depositCallback({ address: to, amount: amountWei, decimals: ETH_DECIMALS, currency: Currency.ETH, txHash: tx.hash, evmNetwork })
     }
   }
 
@@ -124,14 +131,14 @@ export class EthMonitorService {
         const toLower = to.toLowerCase()
         if (!(await this.getAddresses()).includes(toLower)) return
 
-        // USDT has 6 decimals
-        const amountUsdt = Number(ethers.formatUnits(value, 6))
-        if (!amountUsdt || amountUsdt < this.minUsdtDeposit) return
+        const decimals = this.getCoinDecimals(evmNetwork, 'USDT')
+        const amountBase = ethers.toBigInt(value)
+        if (amountBase < parseBaseUnits(this.minUsdtDeposit, decimals)) return
 
         const txHash = event.log.transactionHash
 
-        this.logger.log(`Deposit detected: ${amountUsdt} USDT from ${from} to ${toLower} txHash: ${txHash} network: ${evmNetwork}`)
-        this.depositCallback({ address: toLower, amount: amountUsdt, currency: Currency.USDT, txHash, evmNetwork })
+        this.logger.log(`Deposit detected: ${formatBaseUnits(amountBase, decimals)} USDT from ${from} to ${toLower} txHash: ${txHash} network: ${evmNetwork}`)
+        this.depositCallback({ address: toLower, amount: amountBase, decimals, currency: Currency.USDT, txHash, evmNetwork })
       } catch (err) {
         this.logger.error(`Error processing USDT transfer network: ${evmNetwork} ${err instanceof Error ? err.message : String(err)}`)
       }

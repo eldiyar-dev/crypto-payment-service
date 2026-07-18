@@ -1,4 +1,5 @@
 import { Chain } from '@/common/enums'
+import { formatBaseUnits } from '@/common/utils'
 import { Wallet } from '@/domain/entities/wallet.entity'
 import { WalletRepository } from '@/domain/repositories/walletRepository'
 import { DepositService } from '@/infrastructure/clientApi/deposit.service'
@@ -35,11 +36,11 @@ export class TronMonitorUseCase implements OnModuleInit {
   execute(): void {
     this.logger.log('Starting TRON monitoring...')
 
-    this.tronMonitorService.onDeposit(async ({ address, amount, currency, txHash }) => {
-      this.logger.log(`New TRON deposit: ${address} ${amount} ${currency}`)
-      void this.depositService.notifyNewDeposit({ currency, address, amount, txHash, chain: Chain.TRON })
+    this.tronMonitorService.onDeposit(async ({ address, amount, decimals, currency, txHash }) => {
+      this.logger.log(`New TRON deposit: ${address} ${formatBaseUnits(amount, decimals)} ${currency}`)
+      void this.depositService.notifyNewDeposit({ currency, address, amount, decimals, txHash, chain: Chain.TRON })
 
-      await this.splitWithdrawUseCase.execute({ currency, address, amount, chain: Chain.TRON })
+      await this.splitWithdrawUseCase.execute({ currency, address, amount, decimals, chain: Chain.TRON })
     })
   }
 }

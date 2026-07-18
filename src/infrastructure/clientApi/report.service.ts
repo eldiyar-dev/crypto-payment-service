@@ -8,7 +8,13 @@ import { createClientApiHttp } from './clientApi.http'
 type TReportData = {
   currency: Currency
   address: string
+  /** Display value. Lossy for wei-precision amounts — see `amountExact`. */
   amount: number
+  /**
+   * Exact decimal string for money-path reports. Non-monetary reports (e.g. energy counts)
+   * omit it.
+   */
+  amountExact?: string
   message: string
 }
 
@@ -24,12 +30,13 @@ export class ReportService implements OnModuleInit {
     this.http = createClientApiHttp(this.configService, ReportService.name)
   }
 
-  async sendReport({ currency, address, amount, message }: TReportData): Promise<void> {
+  async sendReport({ currency, address, amount, amountExact, message }: TReportData): Promise<void> {
     try {
       await this.http.post('/api/report', {
         currency,
         address,
         amount,
+        amountExact,
         message,
       })
     } catch (error) {

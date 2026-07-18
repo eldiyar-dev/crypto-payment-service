@@ -5,14 +5,16 @@ import { TronWeb } from 'tronweb'
 
 type SendTRC20TokenParams = {
   toAddress: string
-  amount: number
+  /** Amount in the token's base units (USDT: 1e-6 TRC20 units). Exact. */
+  amount: bigint
   privateKey: string
   contractAddress: string
 }
 
 type SendTRXParams = {
   toAddress: string
-  amount: number
+  /** Amount in SUN (1 TRX = 1_000_000 SUN). Exact. */
+  amount: bigint
   privateKey: string
 }
 
@@ -27,14 +29,14 @@ export class TronTransactionService {
   }
 
   /**
-   * TRX fee in TRX
+   * TRX fee in SUN
    */
-  private readonly TRX_FEE = 0.5
+  private readonly TRX_FEE_SUN = 500_000n
 
   /**
-   * Send TRX to an address with 0.5 TRX for fee
+   * Send TRX to an address, net of the 0.5 TRX fee reserve
    * @param toAddress - The address to send the TRX to
-   * @param amount - The amount of TRX to send
+   * @param amount - The amount of TRX to send, in SUN
    * @param privateKey - The private key of the account to send the TRX from
    * @returns The transaction hash of the TRX sent
    */
@@ -45,15 +47,11 @@ export class TronTransactionService {
       // Set the default address for this transaction
       tronWeb.setPrivateKey(privateKey)
 
-      // Convert amount to SUN (1 TRX = 1,000,000 SUN)
-      let amountInSun = tronWeb.toBigNumber(amount).multipliedBy(1_000_000).integerValue(tronWeb.BigNumber.ROUND_FLOOR)
-
-      // Calculate the fee
-      const feeInSun = tronWeb.toBigNumber(this.TRX_FEE).multipliedBy(1_000_000).integerValue(tronWeb.BigNumber.ROUND_FLOOR) // 0.5 TRX fee
-      amountInSun = amountInSun.minus(feeInSun)
+      // Already in SUN — exact integer arithmetic, no BigNumber float round-trip.
+      const amountInSun = amount - this.TRX_FEE_SUN
 
       // Create transaction
-      const transaction = await tronWeb.transactionBuilder.sendTrx(toAddress, amountInSun.toNumber())
+      const transaction = await tronWeb.transactionBuilder.sendTrx(toAddress, Number(amountInSun))
 
       // Sign transaction
       const signedTx = await tronWeb.trx.sign(transaction, privateKey)
@@ -76,7 +74,7 @@ export class TronTransactionService {
   /**
    * Send a TRC20 token to an address
    * @param toAddress - The address to send the TRC20 token to
-   * @param amount - The amount of TRC20 token to send
+   * @param amount - The amount of TRC20 token to send, in base units
    * @param privateKey - The private key of the account to send the TRC20 token from
    * @param contractAddress - The address of the TRC20 token contract
    * @returns The transaction hash of the TRC20 token sent
@@ -90,11 +88,8 @@ export class TronTransactionService {
 
       const contract = await tronWeb.contract().at(contractAddress)
 
-      // Convert amount to correct format (considering token decimals)
-      const amountInWei = tronWeb
-        .toBigNumber(amount)
-        .multipliedBy(10 ** 6)
-        .integerValue(tronWeb.BigNumber.ROUND_FLOOR)
+      // Already in the token's base units — pass through exactly.
+      const amountInWei = amount
 
       // Create transaction
       const txHash = (await contract.transfer(toAddress, amountInWei.toString()).send({ feeLimit: 100000000, callValue: 0 })) satisfies string

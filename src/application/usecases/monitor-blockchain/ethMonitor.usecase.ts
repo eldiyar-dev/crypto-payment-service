@@ -1,4 +1,5 @@
 import { Chain } from '@/common/enums'
+import { formatBaseUnits } from '@/common/utils'
 import { Wallet } from '@/domain/entities/wallet.entity'
 import { WalletRepository } from '@/domain/repositories/walletRepository'
 import { EthMonitorService } from '@/infrastructure/blockchain/eth/ethMonitor.service'
@@ -63,12 +64,12 @@ export class EthMonitorUseCase implements OnModuleInit {
   execute(): void {
     this.logger.log('Starting ETH monitoring...')
 
-    this.ethMonitorService.onDeposit(({ address, amount, currency, txHash, evmNetwork }) => {
+    this.ethMonitorService.onDeposit(({ address, amount, decimals, currency, txHash, evmNetwork }) => {
       this.depositQueue.push(async () => {
-        this.logger.log(`New ETH deposit: ${address} ${amount} ${currency} txHash: ${txHash} evmNetwork: ${evmNetwork}`)
+        this.logger.log(`New ETH deposit: ${address} ${formatBaseUnits(amount, decimals)} ${currency} txHash: ${txHash} evmNetwork: ${evmNetwork}`)
 
-        void this.depositService.notifyNewDeposit({ currency, address, amount, txHash, chain: evmNetwork })
-        await this.splitWithdrawUseCase.execute({ currency, address, amount, chain: evmNetwork })
+        void this.depositService.notifyNewDeposit({ currency, address, amount, decimals, txHash, chain: evmNetwork })
+        await this.splitWithdrawUseCase.execute({ currency, address, amount, decimals, chain: evmNetwork })
       })
       void this.processQueue()
     })

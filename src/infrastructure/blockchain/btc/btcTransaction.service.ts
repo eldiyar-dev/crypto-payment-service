@@ -1,3 +1,4 @@
+import { BTC_DECIMALS, formatBaseUnits } from '@/common/utils'
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import axios from 'axios'
@@ -13,7 +14,8 @@ bitcoin.initEccLib(ecc)
 
 type SendBTCParams = {
   toAddress: string
-  amount: number
+  /** Amount in satoshi. Exact. */
+  amount: bigint
   privateKey: string
 }
 
@@ -53,7 +55,7 @@ export class BtcTransactionService {
 
       // 2. Collect transaction
       const psbt = new bitcoin.Psbt({ network: this.network })
-      let totalInput = 0
+      let totalInput = 0n
 
       // Add inputs
       for (const utxo of utxos) {
@@ -67,11 +69,12 @@ export class BtcTransactionService {
           index: utxo.vout,
           nonWitnessUtxo: Buffer.from(rawTxHex, 'hex'),
         })
-        totalInput += parseInt(utxo.value, 10)
+        totalInput += BigInt(utxo.value)
       }
 
-      const amountSatoshi = Math.floor(amount * 1e8)
-      const fee = 1000 // satoshi
+      // Already in satoshi — exact.
+      const amountSatoshi = amount
+      const fee = 1000n // satoshi
 
       if (totalInput < fee) {
         this.logger.error(`Insufficient funds for fee for fromAddress: ${fromAddress}`)
@@ -82,17 +85,17 @@ export class BtcTransactionService {
       if (totalInput < amountSatoshi + fee) {
         // Not enough for requested amount, but enough for fee
         sendAmount = totalInput - fee
-        if (sendAmount <= 0) {
+        if (sendAmount <= 0n) {
           this.logger.error(`Insufficient funds for fromAddress: ${fromAddress} (not enough for fee)`)
           return null
         }
-        this.logger.warn(`Not enough funds for requested amount, sending max possible: ${sendAmount / 1e8} BTC`)
+        this.logger.warn(`Not enough funds for requested amount, sending max possible: ${formatBaseUnits(sendAmount, BTC_DECIMALS)} BTC`)
       }
 
-      psbt.addOutput({ address: toAddress, value: sendAmount })
+      psbt.addOutput({ address: toAddress, value: Number(sendAmount) })
 
       const change = totalInput - sendAmount - fee
-      if (change > 0) psbt.addOutput({ address: fromAddress, value: change })
+      if (change > 0n) psbt.addOutput({ address: fromAddress, value: Number(change) })
 
       // 3. Sign
       for (let i = 0; i < utxos.length; i++) {
@@ -109,14 +112,14 @@ export class BtcTransactionService {
       // 4. Send through Ankr
       const txHash = await this.broadcastTransaction(txHex)
       if (!txHash) {
-        this.logger.error(`Failed to broadcast transaction for fromAddress: ${fromAddress} amount: ${amount} BTC`)
+        this.logger.error(`Failed to broadcast transaction for fromAddress: ${fromAddress} amount: ${formatBaseUnits(amount, BTC_DECIMALS)} BTC`)
         return null
       }
 
-      this.logger.log(`Successfully sent ${amount} BTC to ${toAddress} txHash: ${txHash}`)
+      this.logger.log(`Successfully sent ${formatBaseUnits(amount, BTC_DECIMALS)} BTC to ${toAddress} txHash: ${txHash}`)
       return txHash
     } catch (error) {
-      this.logger.error(`Error sending to ${toAddress} ${amount} BTC: ${(error as Error).message}`, error)
+      this.logger.error(`Error sending to ${toAddress} ${formatBaseUnits(amount, BTC_DECIMALS)} BTC: ${(error as Error).message}`, error)
       return null
     }
   }

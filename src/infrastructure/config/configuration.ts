@@ -59,12 +59,18 @@ export default () =>
         coinContractAddress: {
           USDT: '0xdac17f958d2ee523a2206206994597c13d831ec7',
         },
+        coinDecimals: {
+          USDT: 6,
+        },
         rpcUrl: process.env.ETH_RPC_URL,
         wssUrl: process.env.ETH_WSS_URL,
       },
       EVM_BASE: {
         coinContractAddress: {
           USDT: '0xfde4c96c8593536e31f229ea8f37b2ada2699bb2',
+        },
+        coinDecimals: {
+          USDT: 6,
         },
         rpcUrl: process.env.BASE_RPC_URL,
         wssUrl: process.env.BASE_WSS_URL,
@@ -73,12 +79,18 @@ export default () =>
         coinContractAddress: {
           USDT: '0x55d398326f99059ff775485246999027b3197955',
         },
+        coinDecimals: {
+          USDT: 18,
+        },
         rpcUrl: process.env.BSC_RPC_URL,
         wssUrl: process.env.BSC_WSS_URL,
       },
       EVM_POLYGON: {
         coinContractAddress: {
           USDT: '0xc2132d05d31c914a87c6611c10748aeb04b58e8f',
+        },
+        coinDecimals: {
+          USDT: 6,
         },
         rpcUrl: process.env.POLYGON_RPC_URL,
         wssUrl: process.env.POLYGON_WSS_URL,
@@ -87,12 +99,18 @@ export default () =>
         coinContractAddress: {
           USDT: '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9',
         },
+        coinDecimals: {
+          USDT: 6,
+        },
         rpcUrl: process.env.ARBITRUM_RPC_URL,
         wssUrl: process.env.ARBITRUM_WSS_URL,
       },
       EVM_OPTIMISM: {
         coinContractAddress: {
           USDT: '0x94b008aa00579c1307b0ef2c499ad98a8ce58e58',
+        },
+        coinDecimals: {
+          USDT: 6,
         },
         rpcUrl: process.env.OPTIMISM_RPC_URL,
         wssUrl: process.env.OPTIMISM_WSS_URL,
@@ -101,12 +119,18 @@ export default () =>
         coinContractAddress: {
           USDT: '0xc7198437980c041c805a1edcba50c1ce5db95118',
         },
+        coinDecimals: {
+          USDT: 6,
+        },
         rpcUrl: process.env.AVALANCHE_C_RPC_URL,
         wssUrl: process.env.AVALANCHE_C_WSS_URL,
       },
       EVM_FANTOM: {
         coinContractAddress: {
           USDT: '0x049d68029688eabf473097a2fc38ef61d3530b6e',
+        },
+        coinDecimals: {
+          USDT: 6,
         },
         rpcUrl: process.env.FANTOM_RPC_URL,
         wssUrl: process.env.FANTOM_WSS_URL,
@@ -144,6 +168,9 @@ export type TConfiguration = {
     [key in EvmNetwork]: {
       coinContractAddress: {
         [key in EvmCoin]: string
+      }
+      coinDecimals: {
+        [key in EvmCoin]: number
       }
       rpcUrl: string
       wssUrl: string

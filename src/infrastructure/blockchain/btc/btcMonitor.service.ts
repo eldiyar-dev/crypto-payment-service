@@ -1,10 +1,11 @@
 import { Chain } from '@/common/enums'
 import { AnkrTransaction } from '@/common/interfaces'
+import { BTC_DECIMALS, formatBaseUnits, parseBaseUnits } from '@/common/utils'
 import { RedisService } from '@/infrastructure/redis/redis.service'
 import { Injectable, Logger } from '@nestjs/common'
 import { BtcInfoService } from './btcInfo.service'
 
-type DepositCallback = (data: { address: string; amount: number; txHash: string }) => void
+type DepositCallback = (data: { address: string; amount: bigint; decimals: number; txHash: string }) => void
 
 @Injectable()
 export class BtcMonitorService {
@@ -18,6 +19,8 @@ export class BtcMonitorService {
   private depositCallback: DepositCallback
 
   private readonly confirmationsThreshold = 2
+  /** Dust threshold: 0.00005 BTC (~$5), in satoshi. */
+  private readonly minBtcDeposit = parseBaseUnits('0.00005', BTC_DECIMALS)
   private lastProcessedBlock: number
   private readonly POLLING_INTERVAL = 60_000
 
@@ -121,13 +124,14 @@ export class BtcMonitorService {
       for (const address of output.addresses) {
         if (!monitoredAddressesSet.has(address)) continue
 
-        const amountBTC = +output.value / 1e8
+        // output.value is a satoshi string — keep it exact.
+        const amountSatoshi = BigInt(output.value)
 
         // Ignore small deposits (0.00005 BTC) 5$
-        if (amountBTC < 0.00005) continue
+        if (amountSatoshi < this.minBtcDeposit) continue
 
-        this.logger.log(`Deposit detected: to ${address}, amount ${amountBTC} BTC, txid: ${tx.txid}`)
-        this.depositCallback({ address, amount: amountBTC, txHash: tx.txid })
+        this.logger.log(`Deposit detected: to ${address}, amount ${formatBaseUnits(amountSatoshi, BTC_DECIMALS)} BTC, txid: ${tx.txid}`)
+        this.depositCallback({ address, amount: amountSatoshi, decimals: BTC_DECIMALS, txHash: tx.txid })
       }
     }
   }

@@ -67,65 +67,57 @@ export class EthInfoService {
   // }
 
   /**
-   * Get the USDT gas price in ETH for a given contract, to address, and amount
+   * Get the total gas cost, in wei, of a USDT transfer of `amount` base units
    * @param privateKey - The private key of the wallet
    * @param toAddress - The address to send the transaction to
-   * @param amount - The amount to send
+   * @param amount - The amount to send, in the token's base units
    * @param evmNetwork - EVM network
-   * @returns The gas price in ETH as a number
+   * @returns The gas cost in wei, or null if estimation failed
    */
-  async getUSDTGasPriceInEth(privateKey: string, toAddress: string, amount: number, evmNetwork: EvmNetwork): Promise<number | null> {
+  async getUSDTGasCostInWei(privateKey: string, toAddress: string, amount: bigint, evmNetwork: EvmNetwork): Promise<bigint | null> {
     try {
       const provider = this.provider(evmNetwork)
       const wallet = new ethers.Wallet(privateKey, provider)
       const contract = new ethers.Contract(this.coinContractAddress(evmNetwork, 'USDT'), this.USDT_ABI, wallet)
 
-      const roundedAmount = +Number(amount).toFixed(6)
-      const amountInWei = ethers.parseUnits(roundedAmount.toString(), 6)
-
-      const gasLimit = await contract.transfer.estimateGas(toAddress, amountInWei)
+      const gasLimit = await contract.transfer.estimateGas(toAddress, amount)
 
       const { maxFeePerGas, maxPriorityFeePerGas } = await provider.getFeeData()
 
       const gasPrice = maxFeePerGas ?? maxPriorityFeePerGas ?? 0n
-      const totalFee = gasPrice * gasLimit
 
-      const totalFeeEth = ethers.formatEther(totalFee)
-
-      return +totalFeeEth
+      return gasPrice * gasLimit
     } catch (error) {
-      this.logger.error(`Failed to get gas price in ETH for address ${toAddress} and amount ${amount}: ${error.message}`)
+      this.logger.error(`Failed to get gas cost for address ${toAddress} and amount ${amount}: ${error.message}`)
       return null
     }
   }
 
   /**
-   * Get the gas price in ETH for a native ETH transfer transaction
+   * Get the total gas cost, in wei, of a native transfer of `amount` wei
    * @param privateKey - The private key of the wallet
    * @param toAddress - The address to send ETH to
-   * @param amount - The amount of ETH to send (in ETH)
+   * @param amount - The amount to send, in wei
    * @param evmNetwork - The EVM network
-   * @returns The gas price in ETH as a number
+   * @returns The gas cost in wei, or null if estimation failed
    */
-  async getEthTransferGasPriceInEth(privateKey: string, toAddress: string, amount: number, evmNetwork: EvmNetwork): Promise<number | null> {
+  async getEthTransferGasCostInWei(privateKey: string, toAddress: string, amount: bigint, evmNetwork: EvmNetwork): Promise<bigint | null> {
     try {
       const provider = this.provider(evmNetwork)
       const wallet = new ethers.Wallet(privateKey, provider)
-      const value = ethers.parseEther(amount.toString())
 
       // Create a transaction object for a simple ETH transfer
-      const gasLimit = await wallet.estimateGas({ to: toAddress, value })
+      const gasLimit = await wallet.estimateGas({ to: toAddress, value: amount })
 
       // Get current gas price data
       const { maxFeePerGas, gasPrice } = await provider.getFeeData()
 
       // For legacy networks, gasPrice is used; for EIP-1559, maxFeePerGas is used
       const usedGasPrice = maxFeePerGas ?? gasPrice ?? 0n
-      const totalFee = usedGasPrice * gasLimit
-      const totalFeeEth = ethers.formatEther(totalFee)
-      return +totalFeeEth
+
+      return usedGasPrice * gasLimit
     } catch (error) {
-      this.logger.error(`Failed to get ETH transfer gas price for address ${toAddress} and amount ${amount}: ${error.message}`)
+      this.logger.error(`Failed to get ETH transfer gas cost for address ${toAddress} and amount ${amount}: ${error.message}`)
       return null
     }
   }
