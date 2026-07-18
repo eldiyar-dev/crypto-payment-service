@@ -1,7 +1,18 @@
 import { Chain, Currency } from '@/common/enums'
 import { EvmNetwork } from '@/common/interfaces'
 import { AESCipherService } from '@/common/services/aes.service'
-import { ETH_DECIMALS, formatBaseUnits, generateUniqueAmount, isEvmNetwork, parseBaseUnits, sleep, splitAmountByPercentage, toDisplayNumber, TRX_DECIMALS } from '@/common/utils'
+import {
+  ETH_DECIMALS,
+  fireAndForget,
+  formatBaseUnits,
+  generateUniqueAmount,
+  isEvmNetwork,
+  parseBaseUnits,
+  sleep,
+  splitAmountByPercentage,
+  toDisplayNumber,
+  TRX_DECIMALS,
+} from '@/common/utils'
 import { Wallet } from '@/domain/entities/wallet.entity'
 import { WalletRepository } from '@/domain/repositories/walletRepository'
 import { BtcTransactionService } from '@/infrastructure/blockchain/btc'
@@ -127,7 +138,13 @@ export class SplitWithdrawUseCase {
         await sleep(2_000)
 
         // Debug remaining energy
-        void this.tronEnergyService.getAccountResourceEnergy(address).then((energy) => this.logger.debug(`Remaining energy ${address} ${energy}`))
+        // A debug log line must not be able to take the service down: getAccountResourceEnergy
+        // performs an RPC call and the .then() had no rejection handler.
+        fireAndForget(
+          this.tronEnergyService.getAccountResourceEnergy(address).then((energy) => this.logger.debug(`Remaining energy ${address} ${energy}`)),
+          this.logger,
+          `Reading remaining energy for ${address}`,
+        )
       }
 
       // Split amount. splitAmountByPercentage throws on a percentage outside [0, 100] rather

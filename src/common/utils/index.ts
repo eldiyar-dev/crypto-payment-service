@@ -1,6 +1,7 @@
 export * from './calculate.util'
 export * from './deriveAddress.util'
 export * from './detectBlockchainNetwork.util'
+export * from './fireAndForget.util'
 export * from './generate.util'
 export * from './money.util'
 export * from './redact.util'

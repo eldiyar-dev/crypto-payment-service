@@ -1,5 +1,5 @@
 import { Chain } from '@/common/enums'
-import { formatBaseUnits, SerialQueue } from '@/common/utils'
+import { fireAndForget, formatBaseUnits, SerialQueue } from '@/common/utils'
 import { Wallet } from '@/domain/entities/wallet.entity'
 import { WalletRepository } from '@/domain/repositories/walletRepository'
 import { EthMonitorService } from '@/infrastructure/blockchain/eth/ethMonitor.service'
@@ -38,7 +38,7 @@ export class EthMonitorUseCase implements OnModuleInit, OnApplicationShutdown {
 
     this.execute()
 
-    void this.ethMonitorService.start(Chain.ETH)
+    fireAndForget(this.ethMonitorService.start(Chain.ETH), this.logger, 'Starting ETH monitor')
     // void this.ethMonitorService.start(Chain.EVM_BASE)
     // void this.ethMonitorService.start(Chain.EVM_BSC)
     // void this.ethMonitorService.start(Chain.EVM_POLYGON)

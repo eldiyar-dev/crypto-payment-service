@@ -258,13 +258,17 @@ export class TronEnergyService {
    * @param address - The address to get the remaining energy for
    * @returns The remaining energy for the account
    */
-  async getAccountResourceEnergy(address: string) {
-    const resources = await this.tronWeb.trx.getAccountResources(address)
-    const totalEnergy = resources.EnergyLimit || 0
-    const usedEnergy = resources.EnergyUsed || 0
+  async getAccountResourceEnergy(address: string): Promise<number | null> {
+    try {
+      const resources = await this.tronWeb.trx.getAccountResources(address)
+      const totalEnergy = resources.EnergyLimit || 0
+      const usedEnergy = resources.EnergyUsed || 0
 
-    const remainingEnergy = totalEnergy - usedEnergy
-
-    return remainingEnergy
+      return totalEnergy - usedEnergy
+    } catch (error) {
+      // Diagnostic only — never propagate an RPC failure out of a resource read.
+      this.logger.error(`Failed to read energy for ${address}: ${(error as Error).message}`)
+      return null
+    }
   }
 }

@@ -1,6 +1,6 @@
 import { Chain, Currency } from '@/common/enums'
 import { EvmCoin, EvmNetwork } from '@/common/interfaces'
-import { ETH_DECIMALS, formatBaseUnits, parseBaseUnits, sleep, withRetry } from '@/common/utils'
+import { ETH_DECIMALS, fireAndForget, formatBaseUnits, parseBaseUnits, sleep, withRetry } from '@/common/utils'
 import { ChainCheckpointRepository } from '@/domain/repositories/chainCheckpointRepository'
 import { RedisService } from '@/infrastructure/redis/redis.service'
 import { Injectable, Logger } from '@nestjs/common'
@@ -98,19 +98,19 @@ export class EthMonitorService {
       // Every failure signal funnels into the same guarded path, which is idempotent.
       void provider.on('error', (err: Error) => {
         this.logger.error(`WebSocketProvider error network: ${evmNetwork}: ${err.message}`)
-        void this.scheduleReconnect(evmNetwork)
+        fireAndForget(this.scheduleReconnect(evmNetwork), this.logger, `Reconnecting ${evmNetwork}`)
       })
 
       const socket = this.socketHandlers(provider)
       socket.onerror = (err) => {
         this.logger.error(`WebSocket error network: ${evmNetwork}: ${err?.message ?? 'unknown'}`)
-        void this.scheduleReconnect(evmNetwork)
+        fireAndForget(this.scheduleReconnect(evmNetwork), this.logger, `Reconnecting ${evmNetwork}`)
       }
       // A clean close is still a lost subscription: without this, a server-side disconnect
       // leaves the monitor silently deaf rather than reconnecting.
       socket.onclose = () => {
         this.logger.warn(`WebSocket closed network: ${evmNetwork}`)
-        void this.scheduleReconnect(evmNetwork)
+        fireAndForget(this.scheduleReconnect(evmNetwork), this.logger, `Reconnecting ${evmNetwork}`)
       }
 
       await this.listenEthTransfers(provider, evmNetwork)
@@ -120,7 +120,7 @@ export class EthMonitorService {
       this.logger.log(`ETH monitor started network: ${evmNetwork}`)
     } catch (err) {
       this.logger.error(`Error starting ETH monitor network: ${evmNetwork} ${err instanceof Error ? err.message : String(err)}`)
-      void this.scheduleReconnect(evmNetwork)
+      fireAndForget(this.scheduleReconnect(evmNetwork), this.logger, `Reconnecting ${evmNetwork}`)
     }
   }
 
