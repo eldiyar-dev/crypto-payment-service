@@ -39,6 +39,7 @@ export class BtcMonitorService {
   private readonly minBtcDeposit = parseBaseUnits('0.00005', BTC_DECIMALS)
   private lastProcessedBlock: number
   private readonly POLLING_INTERVAL = 60_000
+  private intervalId: NodeJS.Timeout | null = null
 
   onDeposit(callback: DepositCallback) {
     this.depositCallback = callback
@@ -52,8 +53,19 @@ export class BtcMonitorService {
     // Moved off Redis: `allkeys-lru` could evict this key, silently resetting the scanner to
     // the chain tip and skipping every deposit in between.
     this.lastProcessedBlock = (await this.chainCheckpointRepository.getLastScannedBlock(Chain.BTC)) ?? 0
-    setInterval(() => this.pollForNewBlocks(), this.POLLING_INTERVAL) // Poll every minute
+
+    this.stop()
+    // The handle was previously discarded, so the interval could never be cleared and kept
+    // firing through shutdown.
+    this.intervalId = setInterval(() => void this.pollForNewBlocks(), this.POLLING_INTERVAL) // Poll every minute
     void this.pollForNewBlocks()
+  }
+
+  stop() {
+    if (!this.intervalId) return
+
+    clearInterval(this.intervalId)
+    this.intervalId = null
   }
 
   private async pollForNewBlocks() {

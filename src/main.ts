@@ -19,6 +19,18 @@ async function bootstrap() {
     logger: winstonConfig,
   })
 
+  // Without this, Nest's destroy/shutdown hooks never fire: every deploy dropped the in-memory
+  // deposit queue and could kill a withdrawal after broadcast but before the ledger recorded
+  // it, leaving money moved on-chain with no record. Monitors stop accepting new work on
+  // SIGTERM and drain what is in flight.
+  app.enableShutdownHooks()
+
+  // A rejected promise that nothing handles is fatal under Node's default settings. On a
+  // service that custodies funds, logging and staying up beats dying mid-withdrawal.
+  process.on('unhandledRejection', (reason) => {
+    logger.error(`Unhandled promise rejection: ${reason instanceof Error ? reason.message : String(reason)}`)
+  })
+
   app.use(bodyParser.json({ limit: '4mb' }))
   app.use(bodyParser.urlencoded({ limit: '4mb', extended: true }))
 

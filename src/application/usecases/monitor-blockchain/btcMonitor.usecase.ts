@@ -4,11 +4,11 @@ import { Wallet } from '@/domain/entities/wallet.entity'
 import { WalletRepository } from '@/domain/repositories/walletRepository'
 import { BtcMonitorService } from '@/infrastructure/blockchain/btc/btcMonitor.service'
 import { RedisService } from '@/infrastructure/redis/redis.service'
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
+import { Injectable, Logger, OnApplicationShutdown, OnModuleInit } from '@nestjs/common'
 import { ProcessDepositUseCase } from './processDeposit.usecase'
 
 @Injectable()
-export class BtcMonitorUseCase implements OnModuleInit {
+export class BtcMonitorUseCase implements OnModuleInit, OnApplicationShutdown {
   private readonly logger = new Logger(BtcMonitorUseCase.name)
 
   constructor(
@@ -25,6 +25,11 @@ export class BtcMonitorUseCase implements OnModuleInit {
     this.execute()
 
     await this.btcMonitorService.start()
+  }
+
+  onApplicationShutdown(signal?: string) {
+    this.logger.log(`Shutting down BTC monitoring (${signal ?? 'no signal'})`)
+    this.btcMonitorService.stop()
   }
 
   async getDBWallets(): Promise<Wallet['address'][]> {

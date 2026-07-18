@@ -3,12 +3,12 @@ import { formatBaseUnits } from '@/common/utils'
 import { Wallet } from '@/domain/entities/wallet.entity'
 import { WalletRepository } from '@/domain/repositories/walletRepository'
 import { RedisService } from '@/infrastructure/redis/redis.service'
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
+import { Injectable, Logger, OnApplicationShutdown, OnModuleInit } from '@nestjs/common'
 import { TronMonitorService } from '../../../infrastructure/blockchain/tron/tronMonitor.service'
 import { ProcessDepositUseCase } from './processDeposit.usecase'
 
 @Injectable()
-export class TronMonitorUseCase implements OnModuleInit {
+export class TronMonitorUseCase implements OnModuleInit, OnApplicationShutdown {
   private readonly logger = new Logger(TronMonitorUseCase.name)
 
   constructor(
@@ -25,6 +25,11 @@ export class TronMonitorUseCase implements OnModuleInit {
     this.execute()
 
     await this.tronMonitorService.start()
+  }
+
+  onApplicationShutdown(signal?: string) {
+    this.logger.log(`Shutting down TRON monitoring (${signal ?? 'no signal'})`)
+    this.tronMonitorService.stop()
   }
 
   async getDBWallets(): Promise<Wallet['address'][]> {
