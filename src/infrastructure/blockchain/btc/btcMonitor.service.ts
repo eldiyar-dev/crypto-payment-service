@@ -40,6 +40,7 @@ export class BtcMonitorService {
   private lastProcessedBlock: number
   private readonly POLLING_INTERVAL = 60_000
   private intervalId: NodeJS.Timeout | null = null
+  private isPolling = false
 
   onDeposit(callback: DepositCallback) {
     this.depositCallback = callback
@@ -65,8 +66,17 @@ export class BtcMonitorService {
   }
 
   private async pollForNewBlocks() {
+    // A catch-up pass over many blocks easily exceeds the 60s interval, so without this guard
+    // runs overlapped: two passes could read the same txid from the pending set before either
+    // removed it, firing the deposit callback twice for one transaction. (TRON already had
+    // this guard; BTC did not.)
+    if (this.isPolling) return
+    this.isPolling = true
+
     try {
-      void this.checkPendingDeposits()
+      // Awaited rather than fired with `void`, so a slow confirmation pass cannot run
+      // concurrently with the next tick's pass over the same pending set.
+      await this.checkPendingDeposits()
 
       this.logger.log('Polling for new blocks...')
       const latestBlockHeight = await this.btcInfoService.getLatestBlockHeight()
@@ -88,6 +98,8 @@ export class BtcMonitorService {
       }
     } catch (error) {
       this.logger.error(`Error polling for new blocks: ${String(error)}`)
+    } finally {
+      this.isPolling = false
     }
   }
 
@@ -144,6 +156,12 @@ export class BtcMonitorService {
     const monitored = await this.redisService.filterKnownAddresses(Chain.BTC, candidates)
     if (!monitored.size) return
 
+    // Aggregate per (txid, address) before reporting. A transaction with two outputs to the
+    // same monitored address previously fired the callback twice, producing two sweeps of the
+    // same wallet — the second of which would double-spend or fail. What the address actually
+    // received is the sum, and one sweep of the sum is both correct and cheaper.
+    const credited = new Map<string, { amount: bigint; outputIndex: number }>()
+
     for (const output of tx.vout) {
       if (!output?.addresses?.length) continue
 
@@ -152,13 +170,24 @@ export class BtcMonitorService {
 
         // output.value is a satoshi string — keep it exact.
         const amountSatoshi = BigInt(output.value)
+        const existing = credited.get(address)
 
-        // Ignore small deposits (0.00005 BTC) 5$
-        if (amountSatoshi < this.minBtcDeposit) continue
-
-        this.logger.log(`Deposit detected: to ${address}, amount ${formatBaseUnits(amountSatoshi, BTC_DECIMALS)} BTC, txid: ${tx.txid}`)
-        this.depositCallback({ address, amount: amountSatoshi, decimals: BTC_DECIMALS, txHash: tx.txid, outputIndex: output.n })
+        if (existing) {
+          existing.amount += amountSatoshi
+          // Keep the lowest vout so the ledger key stays stable across re-scans.
+          existing.outputIndex = Math.min(existing.outputIndex, output.n)
+        } else {
+          credited.set(address, { amount: amountSatoshi, outputIndex: output.n })
+        }
       }
+    }
+
+    for (const [address, { amount, outputIndex }] of credited) {
+      // Ignore small deposits (0.00005 BTC) 5$
+      if (amount < this.minBtcDeposit) continue
+
+      this.logger.log(`Deposit detected: to ${address}, amount ${formatBaseUnits(amount, BTC_DECIMALS)} BTC, txid: ${tx.txid}`)
+      this.depositCallback({ address, amount, decimals: BTC_DECIMALS, txHash: tx.txid, outputIndex })
     }
   }
 }
