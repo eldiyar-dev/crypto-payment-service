@@ -58,6 +58,10 @@ export class RedisRepository implements OnModuleDestroy {
     return (await this.redisClient.set(key, value, 'PX', ttlMs, 'NX')) === 'OK'
   }
 
+  increment(key: RedisKey) {
+    return this.redisClient.incr(key)
+  }
+
   sadd(key: string, ...values: string[]) {
     return this.redisClient.sadd(key, ...values)
   }

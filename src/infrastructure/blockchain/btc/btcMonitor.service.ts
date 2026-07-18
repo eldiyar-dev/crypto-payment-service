@@ -41,6 +41,8 @@ export class BtcMonitorService {
   private readonly POLLING_INTERVAL = 60_000
   private intervalId: NodeJS.Timeout | null = null
   private isPolling = false
+  /** ~30 minutes at the 60s poll interval before a pending txid is dead-lettered. */
+  private readonly MAX_PENDING_ATTEMPTS = 30
 
   onDeposit(callback: DepositCallback) {
     this.depositCallback = callback
@@ -140,7 +142,18 @@ export class BtcMonitorService {
 
     for (const txid of pendingTxs) {
       const tx = await this.btcInfoService.getTxByHash(txid)
-      if (!tx) continue
+
+      if (!tx) {
+        // A txid that never resolves used to sit in the pending set forever, re-fetched every
+        // 60s with no attempt counter and no way to notice. Bound the retries and move it to a
+        // dead-letter set an operator can inspect.
+        const attempts = await this.redisService.incrementBtcPendingAttempts(txid)
+        if (attempts >= this.MAX_PENDING_ATTEMPTS) {
+          this.logger.error(`BTC tx ${txid} could not be resolved after ${attempts} attempts — moving to dead-letter; a detected deposit may never have been credited`)
+          await this.redisService.deadLetterBtcTransaction(txid)
+        }
+        continue
+      }
 
       const confirmations = tx.confirmations
       if (confirmations < this.confirmationsThreshold) continue

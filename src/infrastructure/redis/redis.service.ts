@@ -129,5 +129,36 @@ export class RedisService {
 
   async removeBtcPendingTransaction(txHash: string) {
     await this.redisRepository.srem(this.btcPendingKey, txHash)
+    await this.redisRepository.delete(this.btcAttemptsKey(txHash))
+  }
+
+  private readonly btcDeadLetterKey = 'btc:deadletter:txs'
+  private readonly btcAttemptsKey = (txHash: string) => `btc:pending:attempts:${txHash}`
+
+  /** Counts how many times a pending txid has failed to resolve. */
+  async incrementBtcPendingAttempts(txHash: string): Promise<number> {
+    const key = this.btcAttemptsKey(txHash)
+    const attempts = await this.redisRepository.increment(key)
+
+    // Expire alongside the pending entry so a resolved tx leaves nothing behind.
+    if (attempts === 1) await this.redisRepository.expire(key, 7 * 24 * 60 * 60)
+
+    return attempts
+  }
+
+  /**
+   * Moves an unresolvable txid out of the pending set into a dead-letter set.
+   *
+   * Without this, a txid whose lookup keeps failing stayed in `btc:pending:txs` forever: it was
+   * re-fetched every 60s, the set grew without bound, and nothing surfaced the fact that a
+   * detected deposit was never confirmed.
+   */
+  async deadLetterBtcTransaction(txHash: string) {
+    await this.redisRepository.sadd(this.btcDeadLetterKey, txHash)
+    await this.removeBtcPendingTransaction(txHash)
+  }
+
+  async getBtcDeadLetteredTransactions(): Promise<string[]> {
+    return this.redisRepository.smembers(this.btcDeadLetterKey)
   }
 }
