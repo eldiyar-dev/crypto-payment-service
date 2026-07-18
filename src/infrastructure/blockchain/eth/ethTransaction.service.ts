@@ -1,4 +1,5 @@
 import { EvmCoin, EvmNetwork } from '@/common/interfaces'
+import { isRetryableSendError, SendOutcome, sendFailed, sendSucceeded } from '@/common/utils'
 import { TConfiguration } from '@/infrastructure/config/configuration'
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
@@ -51,7 +52,7 @@ export class EthTransactionService {
    * @returns {Promise<string | null>} The transaction hash if successful, null if failed
    * @throws {Error} If there are insufficient funds for transfer and gas
    */
-  async sendETH({ toAddress, amount, privateKey, evmNetwork }: SendETHParams): Promise<string | null> {
+  async sendETH({ toAddress, amount, privateKey, evmNetwork }: SendETHParams): Promise<SendOutcome> {
     try {
       const provider = this.provider(evmNetwork)
       const wallet = new ethers.Wallet(privateKey, provider)
@@ -80,10 +81,11 @@ export class EthTransactionService {
       // for — and went negative outright when balance < totalGasWithBuffer. Returning null
       // instead lets the caller run its gas top-up and retry, which is the intended recovery.
       if (balance < amountWei + totalGasWithBuffer) {
-        this.logger.error(
-          `Insufficient balance for ${fromAddress} network: ${evmNetwork}: have ${ethers.formatEther(balance)}, need ${ethers.formatEther(amountWei + totalGasWithBuffer)} (amount + gas with 25% buffer)`,
-        )
-        return null
+        const message = `Insufficient balance for ${fromAddress} network: ${evmNetwork}: have ${ethers.formatEther(balance)}, need ${ethers.formatEther(amountWei + totalGasWithBuffer)} (amount + gas with 25% buffer)`
+        this.logger.error(message)
+
+        // Retryable: this is exactly what the caller's gas top-up exists to fix.
+        return sendFailed(message, true)
       }
 
       this.logger.log(`Sending ${ethers.formatEther(amountWei)} ETH to ${toAddress} network: ${evmNetwork}`)
@@ -102,10 +104,11 @@ export class EthTransactionService {
       await txResponse.wait()
       this.logger.log(`ETH transfer to ${toAddress} ${ethers.formatEther(amountWei)} ETH complete. Transaction hash: ${txResponse.hash} network: ${evmNetwork}`)
 
-      return txResponse.hash
+      return sendSucceeded(txResponse.hash)
     } catch (error) {
-      this.logger.error(`ETH transfer network: ${evmNetwork} failed: ${error.message}`)
-      return null
+      const message = (error as Error).message
+      this.logger.error(`ETH transfer network: ${evmNetwork} failed: ${message}`)
+      return sendFailed(message, isRetryableSendError(message))
     }
   }
 
@@ -120,7 +123,7 @@ export class EthTransactionService {
    * @param {number} params.decimals - The number of decimals of the ERC20 token
    * @returns {Promise<string | null>} The transaction hash if successful, null if failed
    */
-  async sendERC20Token({ toAddress, amount, privateKey, decimals, evmNetwork, coin }: SendERC20TokenParams): Promise<string | null> {
+  async sendERC20Token({ toAddress, amount, privateKey, decimals, evmNetwork, coin }: SendERC20TokenParams): Promise<SendOutcome> {
     try {
       const provider = this.provider(evmNetwork)
       const wallet = new ethers.Wallet(privateKey, provider)
@@ -144,8 +147,9 @@ export class EthTransactionService {
 
       const ethBalance = await provider.getBalance(fromAddress)
       if (ethBalance < totalFee) {
-        this.logger.error(`Not enough ETH to pay for gas. Address: ${fromAddress}, ETH balance: ${ethBalance}, required: ${ethers.formatEther(totalFee)} network: ${evmNetwork}`)
-        return null
+        const message = `Not enough native currency to pay for gas. Address: ${fromAddress}, balance: ${ethBalance}, required: ${ethers.formatEther(totalFee)} network: ${evmNetwork}`
+        this.logger.error(message)
+        return sendFailed(message, true)
       }
 
       // Send transaction
@@ -157,10 +161,11 @@ export class EthTransactionService {
       const receipt = await tx.wait()
       this.logger.log(`Transaction send ERC20 network: ${evmNetwork} to ${toAddress} receipt:`, receipt)
 
-      return tx.hash
+      return sendSucceeded(tx.hash as string)
     } catch (error) {
-      this.logger.error(`ERC20 transfer network: ${evmNetwork} failed: ${error.message}`)
-      return null
+      const message = (error as Error).message
+      this.logger.error(`ERC20 transfer network: ${evmNetwork} failed: ${message}`)
+      return sendFailed(message, isRetryableSendError(message))
     }
   }
 }

@@ -1,4 +1,5 @@
 import { Chain, Currency } from '@/common/enums'
+import { SendOutcome, sendFailed } from '@/common/utils'
 import { EvmCoin, EvmNetwork } from '@/common/interfaces'
 import { Injectable } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
@@ -41,7 +42,7 @@ export class BlockchainTransactionService {
     return this.configService.get(`evmNetworks.${evmNetwork}.coinDecimals.${coin}`, { infer: true })!
   }
 
-  sendFunds({ currency, toAddress, amount, privateKey, chain }: TSendFunds) {
+  sendFunds({ currency, toAddress, amount, privateKey, chain }: TSendFunds): Promise<SendOutcome> {
     switch (chain) {
       case Chain.BTC:
         return this.btcTransactionService.sendBTC({ toAddress, amount, privateKey })
@@ -63,6 +64,10 @@ export class BlockchainTransactionService {
             evmNetwork: chain,
             coin: 'USDT',
           })
+
+        // Previously fell off the end returning undefined, which the caller read as a failed
+        // send with no explanation.
+        return Promise.resolve(sendFailed(`Unsupported currency ${currency} on ${chain}`))
       }
     }
   }

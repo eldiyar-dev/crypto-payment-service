@@ -82,6 +82,10 @@ export class BtcMonitorService {
 
       this.logger.log('Polling for new blocks...')
       const latestBlockHeight = await this.btcInfoService.getLatestBlockHeight()
+      if (latestBlockHeight === null) {
+        this.logger.error('Could not read the chain tip; skipping this poll rather than acting on a fabricated height')
+        return
+      }
 
       if (!this.lastProcessedBlock) {
         this.logger.log(`Initializing last processed block to ${latestBlockHeight}`)

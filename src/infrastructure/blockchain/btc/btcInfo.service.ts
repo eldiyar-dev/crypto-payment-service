@@ -25,14 +25,21 @@ export class BtcInfoService {
     }
   }
 
-  async getLatestBlockHeight(): Promise<number> {
+  /**
+   * Chain tip height, or null if unavailable.
+   *
+   * This used to return 0 on failure, which the caller could not distinguish from a real
+   * height — and 0 is falsy, so it silently re-triggered the "initialise the checkpoint"
+   * branch. Failure is never encoded as a valid-looking value.
+   */
+  async getLatestBlockHeight(): Promise<number | null> {
     try {
       const url = `${this.baseUrl}/api/v2/`
-      const { data } = await axios.get<AnkrStatus>(url)
+      const { data } = await axios.get<AnkrStatus>(url, { timeout: 10_000 })
       return data.blockbook.bestHeight
     } catch (error) {
       this.logger.error(`Failed to get latest block height: ${(error as Error).message}`)
-      return 0
+      return null
     }
   }
 

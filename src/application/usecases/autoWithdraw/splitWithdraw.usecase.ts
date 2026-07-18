@@ -302,22 +302,22 @@ export class SplitWithdrawUseCase {
 
     if (!outputs.length) return { success: true }
 
-    const txHash = await this.btcTransactionService.sendBTCToMany({ outputs, privateKey: fromAddressPrivateKey })
-    if (!txHash) {
+    const outcome = await this.btcTransactionService.sendBTCToMany({ outputs, privateKey: fromAddressPrivateKey })
+    if (!outcome.ok) {
       const total = mainAmount + additionalAmount
-      void this.reportService.sendReport({ currency, address: fromAddress, ...this.reportAmount(total, decimals), message: 'BTC split withdrawal failed' })
-      this.logger.error(`BTC split withdrawal failed from ${fromAddress}`)
-      return { success: false, reason: 'BTC split withdrawal failed' }
+      void this.reportService.sendReport({ currency, address: fromAddress, ...this.reportAmount(total, decimals), message: `BTC split withdrawal failed: ${outcome.message}` })
+      this.logger.error(`BTC split withdrawal failed from ${fromAddress}: ${outcome.message}`)
+      return { success: false, reason: `BTC split withdrawal failed: ${outcome.message}` }
     }
 
-    this.logger.log(`BTC split withdrawal complete from ${fromAddress} txHash: ${txHash}`)
+    this.logger.log(`BTC split withdrawal complete from ${fromAddress} txHash: ${outcome.txHash}`)
     return { success: true }
   }
 
   private async withdrawAccount({ fromAddress, toAddress, amount, decimals, fromAddressPrivateKey, mainPrivateKey, currency, chain }: TWithdrawAccountParams) {
-    const reportLog = () => {
-      void this.reportService.sendReport({ currency, address: fromAddress, ...this.reportAmount(amount, decimals), message: 'Withdrawal failed' })
-      this.logger.error(`Withdrawal failed from ${fromAddress} to ${toAddress} ${formatBaseUnits(amount, decimals)} ${currency}`)
+    const reportLog = (reason: string) => {
+      void this.reportService.sendReport({ currency, address: fromAddress, ...this.reportAmount(amount, decimals), message: `Withdrawal failed: ${reason}` })
+      this.logger.error(`Withdrawal failed from ${fromAddress} to ${toAddress} ${formatBaseUnits(amount, decimals)} ${currency}: ${reason}`)
       return false
     }
 
@@ -327,35 +327,41 @@ export class SplitWithdrawUseCase {
     }
 
     try {
-      const withdrawAccount = () => this.blockchainTransactionService.sendFunds({ currency, toAddress, amount, privateKey: fromAddressPrivateKey, chain })
+      const send = () => this.blockchainTransactionService.sendFunds({ currency, toAddress, amount, privateKey: fromAddressPrivateKey, chain })
 
-      const txHash = await withdrawAccount()
-      if (txHash) return success()
+      const first = await send()
+      if (first.ok) return success()
+
+      // Only fund-and-retry a failure that funding can actually fix. Every failure used to be
+      // treated identically, so an invalid address or a reverted contract call burned a real
+      // gas transfer and a second doomed attempt before failing anyway.
+      if (!first.retryable) {
+        this.logger.error(`Not retrying a terminal failure for ${fromAddress}: ${first.message}`)
+        return reportLog(first.message)
+      }
 
       if (chain === Chain.TRON) {
         // Send 0.5 TRX for fee if account resource/trx insufficient error
         const isSendFeeSuccess = await this.sendTrxForFeeOrActiveAccount(fromAddress, mainPrivateKey, '0.5', 'fee')
-        if (!isSendFeeSuccess) return reportLog()
+        if (!isSendFeeSuccess) return reportLog(`fee top-up failed after: ${first.message}`)
 
-        const txHash2 = await withdrawAccount()
-        if (!txHash2) return reportLog()
-
-        return success()
+        const second = await send()
+        return second.ok ? success() : reportLog(second.message)
       }
 
       if (isEvmNetwork(chain)) {
-        const txHash = await this.calculateAndSendEthForFee(fromAddress, toAddress, mainPrivateKey, amount, currency, chain)
-        if (!txHash) return reportLog()
+        const funded = await this.calculateAndSendEthForFee(fromAddress, toAddress, mainPrivateKey, amount, currency, chain)
+        if (!funded) return reportLog(`gas top-up failed after: ${first.message}`)
 
-        const txHash2 = await withdrawAccount()
-        if (!txHash2) return reportLog()
-
-        return success()
+        const second = await send()
+        return second.ok ? success() : reportLog(second.message)
       }
 
-      return reportLog()
-    } catch {
-      return reportLog()
+      return reportLog(first.message)
+    } catch (error) {
+      // The bare `catch {}` here discarded the error object entirely, so the one place that
+      // knew why a withdrawal failed threw the reason away.
+      return reportLog(`unexpected error: ${(error as Error).message}`)
     }
   }
 
@@ -411,7 +417,7 @@ export class SplitWithdrawUseCase {
     // sendTRX now transfers exactly what it is given, so the recipient is credited `amount`.
     const amountSun = parseBaseUnits(amount, TRX_DECIMALS)
 
-    const txHash = await this.blockchainTransactionService.sendFunds({
+    const outcome = await this.blockchainTransactionService.sendFunds({
       currency: Currency.TRX,
       toAddress,
       amount: generateUniqueAmount(amountSun, TRON_FEE_DUST_SUN),
@@ -419,7 +425,7 @@ export class SplitWithdrawUseCase {
       chain: Chain.TRON,
     })
 
-    if (!txHash) {
+    if (!outcome.ok) {
       void this.reportService.sendReport({
         currency: Currency.TRX,
         address: toAddress,
@@ -431,8 +437,8 @@ export class SplitWithdrawUseCase {
       return false
     }
 
-    this.logger.log(`Send ${amount} TRX for ${type} to ${toAddress} txHash: ${txHash}`)
-    return txHash
+    this.logger.log(`Send ${amount} TRX for ${type} to ${toAddress} txHash: ${outcome.txHash}`)
+    return outcome.txHash
   }
 
   /**
@@ -462,20 +468,20 @@ export class SplitWithdrawUseCase {
     if (estimated === null) this.logger.warn(`Gas estimation failed for ${sourceAddress} on ${evmNetwork}; using the configured fallback`)
 
     this.logger.log(`Gas cost for fee: ${formatBaseUnits(gasCostInWei, ETH_DECIMALS)} network: ${evmNetwork}`)
-    const txHash = await this.blockchainTransactionService.sendFunds({
+    const outcome = await this.blockchainTransactionService.sendFunds({
       currency: Currency.ETH,
       toAddress: sourceAddress,
       amount: gasCostInWei + EVM_GAS_BUFFER_WEI,
       privateKey,
       chain: evmNetwork,
     })
-    if (!txHash) {
+    if (!outcome.ok) {
       this.logger.error(`Failed to send ${formatBaseUnits(gasCostInWei, ETH_DECIMALS)} gas to ${sourceAddress} network: ${evmNetwork}`)
       return false
     }
 
-    await this.redisService.addFeeTransactionHash(txHash)
-    this.logger.log(`Sent ${formatBaseUnits(gasCostInWei, ETH_DECIMALS)} gas to ${sourceAddress} network: ${evmNetwork} txHash: ${txHash}`)
-    return txHash
+    await this.redisService.addFeeTransactionHash(outcome.txHash)
+    this.logger.log(`Sent ${formatBaseUnits(gasCostInWei, ETH_DECIMALS)} gas to ${sourceAddress} network: ${evmNetwork} txHash: ${outcome.txHash}`)
+    return outcome.txHash
   }
 }

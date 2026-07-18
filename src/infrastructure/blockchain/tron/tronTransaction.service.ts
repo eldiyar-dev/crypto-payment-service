@@ -1,3 +1,4 @@
+import { isRetryableSendError, SendOutcome, sendFailed, sendSucceeded } from '@/common/utils'
 import { TConfiguration } from '@/infrastructure/config/configuration'
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
@@ -51,7 +52,7 @@ export class TronTransactionService {
    * @param privateKey - The private key of the account to send the TRX from
    * @returns The transaction hash of the TRX sent
    */
-  async sendTRX({ toAddress, amount, privateKey }: SendTRXParams): Promise<string | null> {
+  async sendTRX({ toAddress, amount, privateKey }: SendTRXParams): Promise<SendOutcome> {
     try {
       const tronWeb = this.tronWebClass()
 
@@ -61,8 +62,9 @@ export class TronTransactionService {
       // Already in SUN — exact integer arithmetic, sent as requested.
       const amountInSun = amount
       if (amountInSun <= 0n) {
-        this.logger.error(`Refusing to send a non-positive TRX amount to ${toAddress}: ${amountInSun} SUN`)
-        return null
+        const message = `Refusing to send a non-positive TRX amount to ${toAddress}: ${amountInSun} SUN`
+        this.logger.error(message)
+        return sendFailed(message)
       }
 
       // Create transaction
@@ -75,22 +77,26 @@ export class TronTransactionService {
       const receipt = await tronWeb.trx.sendRawTransaction(signedTx)
 
       if (!receipt.result) {
-        this.logger.error(`TRX transfer to ${toAddress} failed receipt:`, receipt)
-        return null
+        const message = `TRX broadcast to ${toAddress} was rejected: ${receipt.message ?? 'no reason given'}`
+        this.logger.error(message)
+        return sendFailed(message, isRetryableSendError(message))
       }
 
       // `receipt.result` only acknowledges the broadcast. Wait for inclusion so that a returned
       // hash means the same thing on every path through this service: confirmed on-chain.
       const blockNumber = await this.tronInfoService.waitForTronTxConfirmation(receipt.txid, this.CONFIRMATION_ATTEMPTS)
       if (!blockNumber) {
-        this.logger.error(`TRX transfer to ${toAddress} was broadcast as ${receipt.txid} but did not confirm successfully`)
-        return null
+        const message = `TRX transfer to ${toAddress} was broadcast as ${receipt.txid} but did not confirm successfully`
+        this.logger.error(message)
+        // Broadcast but unconfirmed: funding and retrying could double-send, so terminal.
+        return sendFailed(message)
       }
 
-      return receipt.txid
+      return sendSucceeded(receipt.txid)
     } catch (error) {
-      this.logger.error(`TRX transfer to ${toAddress} failed: ${error.message}`)
-      return null
+      const message = (error as Error).message
+      this.logger.error(`TRX transfer to ${toAddress} failed: ${message}`)
+      return sendFailed(message, isRetryableSendError(message))
     }
   }
 
@@ -102,7 +108,7 @@ export class TronTransactionService {
    * @param contractAddress - The address of the TRC20 token contract
    * @returns The transaction hash of the TRC20 token sent
    */
-  async sendTRC20Token({ toAddress, amount, privateKey, contractAddress }: SendTRC20TokenParams): Promise<string | null> {
+  async sendTRC20Token({ toAddress, amount, privateKey, contractAddress }: SendTRC20TokenParams): Promise<SendOutcome> {
     try {
       const tronWeb = this.tronWebClass()
 
@@ -118,8 +124,9 @@ export class TronTransactionService {
       const txHash = (await contract.transfer(toAddress, amountInWei.toString()).send({ feeLimit: 100000000, callValue: 0 })) as string
 
       if (!txHash) {
-        this.logger.error(`TRC20 transfer to ${toAddress} failed txHash:`, txHash)
-        return null
+        const message = `TRC20 broadcast to ${toAddress} returned no transaction id`
+        this.logger.error(message)
+        return sendFailed(message, true)
       }
 
       // A broadcast is not a completed transfer. Out-of-energy is the exact failure this
@@ -128,15 +135,18 @@ export class TronTransactionService {
       // skipped the energy top-up and retry.
       const blockNumber = await this.tronInfoService.waitForTronTxConfirmation(txHash, this.CONFIRMATION_ATTEMPTS)
       if (!blockNumber) {
-        this.logger.error(`TRC20 transfer to ${toAddress} was broadcast as ${txHash} but did not confirm successfully`)
-        return null
+        const message = `TRC20 transfer to ${toAddress} was broadcast as ${txHash} but did not confirm successfully`
+        this.logger.error(message)
+        // Most often out-of-energy, which the energy top-up can resolve.
+        return sendFailed(message, true)
       }
 
       this.logger.log(`TRC20 transfer to ${toAddress} confirmed in block ${blockNumber} txHash: ${txHash}`)
-      return txHash
+      return sendSucceeded(txHash)
     } catch (error) {
-      this.logger.error(`TRC20 transfer to ${toAddress} failed: ${error.message}`)
-      return null
+      const message = (error as Error).message
+      this.logger.error(`TRC20 transfer to ${toAddress} failed: ${message}`)
+      return sendFailed(message, isRetryableSendError(message))
     }
   }
 }

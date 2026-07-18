@@ -1,4 +1,4 @@
-import { BTC_DECIMALS, formatBaseUnits, selectUtxos } from '@/common/utils'
+import { BTC_DECIMALS, formatBaseUnits, isRetryableSendError, SendOutcome, sendFailed, selectUtxos, sendSucceeded } from '@/common/utils'
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import axios from 'axios'
@@ -46,7 +46,7 @@ export class BtcTransactionService {
     this.baseUrl = this.configService.get('btc_api_url')!
   }
 
-  async sendBTC({ toAddress, amount, privateKey }: SendBTCParams): Promise<string | null> {
+  async sendBTC({ toAddress, amount, privateKey }: SendBTCParams): Promise<SendOutcome> {
     return this.sendBTCToMany({ outputs: [{ toAddress, amount }], privateKey })
   }
 
@@ -60,11 +60,10 @@ export class BtcTransactionService {
    * UTXOs, producing a conflicting double-spend. One transaction with both outputs either
    * lands whole or not at all.
    */
-  async sendBTCToMany({ outputs, privateKey }: SendBTCToManyParams): Promise<string | null> {
+  async sendBTCToMany({ outputs, privateKey }: SendBTCToManyParams): Promise<SendOutcome> {
     try {
       if (!outputs.length) {
-        this.logger.error('No outputs supplied')
-        return null
+        return sendFailed('No outputs supplied')
       }
       const keyPair = ECPair.fromWIF(privateKey, this.network)
       const { publicKey } = keyPair
@@ -72,15 +71,16 @@ export class BtcTransactionService {
       const fromAddress = bitcoin.payments.p2wpkh({ pubkey: Buffer.from(publicKey), network: this.network }).address
 
       if (!fromAddress) {
-        this.logger.error('Invalid private key')
-        return null
+        return sendFailed('Invalid private key')
       }
 
       // 1. Get UTXO from Ankr
       const utxos = await this.btcInfoService.getUTXOs(fromAddress)
       if (!utxos.length) {
-        this.logger.error(`No UTXOs found for fromAddress: ${fromAddress}`)
-        return null
+        const message = `No UTXOs found for fromAddress: ${fromAddress}`
+        this.logger.error(message)
+        // BTC has no fee top-up path, so there is nothing a retry could change.
+        return sendFailed(message)
       }
 
       // Already in satoshi — exact.
@@ -96,10 +96,9 @@ export class BtcTransactionService {
       // the caller reported as a completed withdrawal, for an amount nobody requested.
       if (!selection) {
         const available = utxos.reduce((sum, utxo) => sum + BigInt(utxo.value), 0n)
-        this.logger.error(
-          `Insufficient funds for fromAddress: ${fromAddress}: have ${formatBaseUnits(available, BTC_DECIMALS)} BTC, need ${formatBaseUnits(totalOutput, BTC_DECIMALS)} BTC plus fee`,
-        )
-        return null
+        const message = `Insufficient funds for fromAddress: ${fromAddress}: have ${formatBaseUnits(available, BTC_DECIMALS)} BTC, need ${formatBaseUnits(totalOutput, BTC_DECIMALS)} BTC plus fee`
+        this.logger.error(message)
+        return sendFailed(message)
       }
 
       const { selected, fee, change } = selection
@@ -111,8 +110,9 @@ export class BtcTransactionService {
       for (const utxo of selected) {
         const rawTxHex = await this.btcInfoService.getRawTx(utxo.txid)
         if (!rawTxHex) {
-          this.logger.error(`Failed to get raw tx for ${utxo.txid}`)
-          return null
+          const message = `Failed to get raw tx for ${utxo.txid}`
+          this.logger.error(message)
+          return sendFailed(message, true)
         }
         psbt.addInput({
           hash: utxo.txid,
@@ -142,15 +142,17 @@ export class BtcTransactionService {
       // 4. Send through Ankr
       const txHash = await this.broadcastTransaction(txHex)
       if (!txHash) {
-        this.logger.error(`Failed to broadcast transaction for fromAddress: ${fromAddress} amount: ${formatBaseUnits(totalOutput, BTC_DECIMALS)} BTC`)
-        return null
+        const message = `Failed to broadcast transaction for fromAddress: ${fromAddress} amount: ${formatBaseUnits(totalOutput, BTC_DECIMALS)} BTC`
+        this.logger.error(message)
+        return sendFailed(message, true)
       }
 
       this.logger.log(`Successfully sent ${formatBaseUnits(totalOutput, BTC_DECIMALS)} BTC across ${outputs.length} output(s) txHash: ${txHash}`)
-      return txHash
+      return sendSucceeded(txHash)
     } catch (error) {
-      this.logger.error(`Error sending BTC from ${outputs.length} output(s): ${(error as Error).message}`)
-      return null
+      const message = (error as Error).message
+      this.logger.error(`Error sending BTC across ${outputs.length} output(s): ${message}`)
+      return sendFailed(message, isRetryableSendError(message))
     }
   }
 
