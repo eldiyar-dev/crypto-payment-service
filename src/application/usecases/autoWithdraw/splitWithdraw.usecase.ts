@@ -83,11 +83,19 @@ export class SplitWithdrawUseCase {
         return
       }
 
+      // Decrypt in memory at send time — key material is never held decrypted at rest.
+      const fromAddressPrivateKey = this.aesCipherService.decryptPrivateKey(wallet.privateKey, address)
+      if (!fromAddressPrivateKey) {
+        this.logger.error(`Unable to resolve private key for ${address}; aborting withdrawal`)
+        void this.reportService.sendReport({ currency, address, amount, message: `Unable to resolve private key for ${address}` })
+        return
+      }
+
       // Withdraw to additionalAddress
       if (additionalAmount) {
         await this.withdrawAccount({
           fromAddress: address,
-          fromAddressPrivateKey: wallet.privateKey,
+          fromAddressPrivateKey,
           toAddress: additionalAddress,
           mainPrivateKey,
           amount: additionalAmount,
@@ -100,7 +108,7 @@ export class SplitWithdrawUseCase {
       if (mainAmount) {
         await this.withdrawAccount({
           fromAddress: address,
-          fromAddressPrivateKey: wallet.privateKey,
+          fromAddressPrivateKey,
           toAddress: mainAddress,
           mainPrivateKey,
           amount: mainAmount,

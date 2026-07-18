@@ -1,4 +1,5 @@
 import { Chain, EVM_CHAINS } from '@/common/enums'
+import { AESCipherService } from '@/common/services/aes.service'
 import { isEvmNetwork } from '@/common/utils'
 import { Wallet } from '@/domain/entities/wallet.entity'
 import { WalletRepository } from '@/domain/repositories/walletRepository'
@@ -14,17 +15,23 @@ export class StoreWalletUseCase {
     private readonly walletRepository: WalletRepository,
     private readonly redisService: RedisService,
     private readonly btcMonitorService: BtcMonitorService,
+    private readonly aesCipherService: AESCipherService,
   ) {}
 
   addWallets(wallets: Wallet[]) {
     const lowerCaseWallets = wallets.map((wallet) => {
+      // Encrypt custodial key material before it reaches Postgres. Done once per submitted
+      // wallet so the EVM duplicates below share the same ciphertext.
+      const privateKey = this.aesCipherService.encrypt(wallet.privateKey)
+
       if (isEvmNetwork(wallet.chain) || wallet.chain === Chain.BTC) {
         return {
           ...wallet,
+          privateKey,
           address: wallet.address.toLowerCase(),
         }
       }
-      return wallet
+      return { ...wallet, privateKey }
     })
 
     const dublicateEVMWallets: Wallet[] = []

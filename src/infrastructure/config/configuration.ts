@@ -28,6 +28,10 @@ export default () =>
     throttler: [{ ttl: 60000, limit: 10 }],
     client_api_url: process.env.CLIENT_API_URL,
     private_key_secret: process.env.PRIVATE_KEY_SECRET,
+    // Opt-in escape hatch for wallet rows written before encryption existed. Fails closed by
+    // default: a plaintext key is refused rather than silently used. Set to 'true' only while
+    // migrating legacy rows, then unset once every key has been re-encrypted and rotated.
+    allow_legacy_plaintext_keys: process.env.ALLOW_LEGACY_PLAINTEXT_KEYS === 'true',
     ip_whitelist: (process.env.IP_WHITELIST ?? '')?.split(','),
     api_key_secret: process.env.API_KEY_SECRET,
 
@@ -112,6 +116,7 @@ export type TConfiguration = {
   throttler: ThrottlerModuleOptions
   client_api_url: string
   private_key_secret: string
+  allow_legacy_plaintext_keys: boolean
   ip_whitelist: string[]
   api_key_secret: string
 
