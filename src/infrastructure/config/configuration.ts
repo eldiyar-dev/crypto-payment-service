@@ -4,6 +4,7 @@ import { ChainCheckpoint } from '@/domain/entities/chainCheckpoint.entity'
 import { Deposit } from '@/domain/entities/deposit.entity'
 import { Wallet } from '@/domain/entities/wallet.entity'
 import { RedactingTypeOrmLogger } from '@/infrastructure/database/redacting-typeorm.logger'
+import { InitialSchema1750000000000 } from '@/infrastructure/database/migrations/1750000000000-InitialSchema'
 import type { ThrottlerModuleOptions } from '@nestjs/throttler'
 import type { TypeOrmModuleOptions } from '@nestjs/typeorm/dist'
 import type { RedisOptions } from 'ioredis'
@@ -43,7 +44,16 @@ export default () =>
       database: process.env.POSTGRES_DATABASE,
       type: 'postgres',
       entities: [Wallet, Deposit, ChainCheckpoint],
-      synchronize: true,
+      /**
+       * Schema auto-sync is a development convenience and a production hazard: it applies
+       * entity changes to a database holding custodial key material with no migration history
+       * and no rollback, and an entity rename can drop a column. It is now opt-in and defaults
+       * to off outside development.
+       */
+      synchronize: process.env.TYPEORM_SYNCHRONIZE ? process.env.TYPEORM_SYNCHRONIZE === 'true' : process.env.NODE_ENV !== 'production',
+      migrations: [InitialSchema1750000000000],
+      // Run migrations whenever synchronize is not doing the job instead.
+      migrationsRun: !(process.env.TYPEORM_SYNCHRONIZE ? process.env.TYPEORM_SYNCHRONIZE === 'true' : process.env.NODE_ENV !== 'production'),
       // `logging: true` logged every statement with its bound parameters, writing plaintext
       // Wallet.privateKey values into logs/*.log on each INSERT. Statement-level logging is now
       // opt-in, and RedactingTypeOrmLogger drops parameters on every path including errors.
